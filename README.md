@@ -1,132 +1,212 @@
-# prompt5 — 自适应提示词生成器系统
+# Prompt5 — 自适应提示词生成与评测工作台
 
-面向文本 / 系统提示词的「生成—迭代—评测」系统：把用户意图解析为结构化 IR，经多策略生成、三级评估、逐模型渲染，产出各目标模型上的最优提示词；支持会话内动态改进与外部 Agent 连接器接入。
+> **测试状态声明：当前仅为内部测试项目，不能用于生产环境。**
+> 功能、接口、数据结构、评测结论和安装包均可能随时变化；请勿用于真实业务、生产数据或对外正式交付。演示模式与 Mock 生成结果不代表真实模型效果。
 
-> **一句话目标（D-0）**：以各目标模型的**实际任务产出**为主验收；提示词文本质量仅为辅助指标。「最佳」= 固定模型版本 + 任务集 + 环境 + 预算下的统计验收结果。
+Prompt5 把提示词工程从“反复改文本”变成可审计的工程流程：自然语言需求 → 结构化 IR → 人工确认验收标准 → 生成/渲染 → 分层评测 → 统计报告。
+
+当前仓库包含完整的 Python 后端、React 六页 Web 工作台和 Windows 桌面客户端。演示模式可完全离线运行；真实模型评测需要配置模型端点与 API Key。
+
+| 项目信息 | 值 |
+|---|---|
+| 技术栈 | Python 3.11+ · FastAPI · React 19 · TypeScript · Vite · SQLite |
+| 桌面端 | Electron 32 · PyInstaller · electron-builder（Windows） |
+| 当前阶段 | M0–M6 完成 · M7 骨架完成 · UI0 完成 · Windows Desktop 0.1 完成 |
+| 测试 | 后端 407 passed / 30 subtests · 前端 5 passed · 浏览器 smoke 通过 |
+| 许可 | MIT |
+
+---
+
+## 项目简介
+
+Prompt5 面向提示词设计、模型输出对比和回归评测。它重点解决三个问题：
+
+1. **标准先于生成**：先返回版本化 Rubric，由人确认后才调用生成流程。
+2. **结果可审计**：IR v3、稳定 item ID、Patch checksum、版本台账和审计哈希链。
+3. **效果有证据**：L1 规则、L2 裁判、L3 执行评测，结合 CI、McNemar、bootstrap 和预注册门禁。
+
+核心使用场景：
+
+- 提示词模板设计与迭代
+- 多模型输出质量对比
+- 提示词 A/B 测试和回归评测
+- 团队内部提示词资产管理与审计
+
+---
+
+## 主要功能
+
+### 六页 Web 工作台
+
+| 页面 | 路径 | 主要用途 |
+|---|---|---|
+| 任务工作台 | `/` | 创建任务、确认 Rubric、查看 IR / 渲染 / L1 / Evidence |
+| IR 编辑器 | `/editor` | 字段编辑、保护项、Patch Diff、服务端校验应用 |
+| 评测面板 | `/evaluation` | 逐任务结果、通过率、95% CI、McNemar p、门禁标签 |
+| 模型配置 | `/settings` | providers / roles / targets 校验与保存 |
+| 会话回放 | `/sessions` | turns、events、suggestions、epoch |
+| 基准与预注册 | `/benchmark` | 30 任务基准、split、冻结时间和隐藏集隔离状态 |
+
+### 生成与评测闭环
+
+- 创建任务后先返回 Rubric 草案，确认前不进入生成
+- `rubric:confirm` 完成后展示 IR、渲染文本、L1 结果和 Evidence
+- 演示模式明确标注“Mock 生成 · 不代表目标模型真实输出”
+- live 评测需要真实模型端点和密钥
+
+### IR v3 与 Patch
+
+- slots 单一事实源，稳定 item ID
+- base checksum 并发保护，服务端重新计算新 checksum
+- `DELETE` 必须附证据引用，受保护字段只读
+- Ledger 记录版本、墓碑、审计哈希链和授权消费
+
+### 分层评测
+
+- L1：确定性规则
+- L2：LLM 裁判，可启用交换双裁
+- L3：脚本化或真实模型执行评测
+- 统计：置信区间、Wilcoxon、McNemar、bootstrap、TOST
+- 预注册门禁：先冻结口径，再看结果
+
+### Windows 桌面客户端
+
+- Electron 负责窗口与后端进程管理
+- PyInstaller 单文件后端，内置 Python、FastAPI、`web/dist` 和 SQLite schema
+- 首次启动自动创建 `%APPDATA%\Prompt5\config.yaml` 和 `prompt5.db`
+- 无需安装 Python、Node 或数据库
+- 窗口关闭时自动清理后端子进程
+- 演示模式完全离线可用
 
 ---
 
 ## 仓库结构
 
-```
+```text
 .
-├── README.md                 ← 本文件（项目总览 + 进度 + 产出位置）
-├── .gitignore
-├── docs/                     ← 设计文档与过程记录
-│   ├── 提示词生成器原理解析.html
-│   ├── 自适应提示词生成器系统设计方案.html          （v0.1 初稿）
-│   ├── 自适应提示词生成器系统设计方案-v0.2.html
-│   ├── 自适应提示词生成器系统设计方案-v0.3.html
-│   ├── 自适应提示词生成器系统设计方案-v0.4.html
-│   ├── 自适应提示词生成器系统设计方案-v0.5.html
-│   ├── 自适应提示词生成器系统设计方案-v1.0-合并版.html  ← 设计定稿
-│   ├── 外部Agent连接器接口规范-v1.0.html
-│   ├── 提示词生成器系统-搭建执行方案.md              ← 唯一搭建依据（BUILD PLAN v1.0）
-│   └── DeepSeek-V4.1-Flash-搭建执行提示词.md         ← 执行 AI 系统提示词
-└── prompt5/                  ← 源码与工程产出（Python 包）
-    ├── README.md             ← 环境 / 命令 / 模块说明
-    ├── NOTES.md              ← 未覆盖场景与降级台账（工程过程记录）
-    ├── pyproject.toml
-    ├── config.example.yaml   ← 配置样例（密钥只走环境变量）
-    ├── src/prompt5/          ← 实现（40 个 Python 文件）
-    ├── tests/                ← 测试（14 个文件，266 项全绿）
-    ├── specs/                ← 导出的 4 份 JSON Schema（M1 产出）
-    ├── benchmarks/           ← 金标任务集（M3 pilot / M7）
-    ├── reports/              ← 里程碑报告
-    └── data/                 ← 运行时材料（blob 上传，不入库）
+├── README.md                 ← 项目总览
+├── docs/                     ← 产品方案、设计文档、搭建执行方案
+│   ├── 提示词生成器系统-搭建执行方案.md
+│   ├── 自适应提示词生成器系统设计方案-v1.0-合并版.html
+│   └── 外部Agent连接器接口规范-v1.0.html
+└── prompt5/                  ← 工程实现
+    ├── README.md             ← 安装、使用、模块和命令说明
+    ├── HANDOFF.md            ← Web / 桌面端交接说明
+    ├── NOTES.md              ← 工程决策与降级记录
+    ├── src/prompt5/          ← Python 后端
+    ├── tests/                ← 后端测试
+    ├── specs/                ← 4 份 JSON Schema
+    ├── benchmarks/           ← 30 任务基准与预注册
+    ├── reports/              ← pilot / M7 报告
+    ├── web/                  ← React 19 六页工作台
+    └── desktop/              ← Electron + PyInstaller + NSIS
 ```
-
----
-
-## 已完成进度
-
-| 里程碑 | 状态 | 内容 | 验收 |
-|---|---|---|---|
-| **M0** | ✅ | 基础设施：RFC 8785 JCS、ULID、SQLite 14 表 + 迁移、配置加载、9 能力/18 MCP 工具/32 错误码、API `--dry`/`--serve` | `--dry` 打印 capabilities；HTTP 200 |
-| **M1** | ✅ | IR v3 + Patch 契约 + 两阶段应用器 + 版本台账（CAS/墓碑/审计哈希链）+ 4 份 JSON Schema | 属性测试 339 例全绿；Schema Draft2020-12 合法 |
-| **M2** | ✅ | 从零生成闭环：意图抽取（M1）→ 骨架策略生成（M4）→ 模型卡渲染（M3）→ L1 规则评估；Mock LLM 端到端 | `demo-zero` EXIT=0，IR checksum 通过 |
-| **M3** | ✅ | 评测引擎：EvalCase、L2 交换双裁、L3 执行判定、Wilcoxon/McNemar/TOST/bootstrap、评测缓存隔离、blob 上传、pilot 报告 | 266 项测试全绿；`pilot` 产出含 CI 报告 |
-| **M4** | ⏳ 待开工 | 种子反解 + 补丁链 + 回归保护 + Overlay 重基 + 意图门禁 | — |
-| **M5–M7** | ⏳ | 会话改进 / 连接器 TCK / 金标基准与验收 | — |
-
-**当前代码规模**：`src` + `tests` 约 6100+ 行 Python；测试 **266 passed / 30 subtests**（含 hypothesis 属性用例）。
-
----
-
-## 产出位置速查
-
-| 产出 | 路径 |
-|---|---|
-| 系统设计方案（定稿） | [`docs/自适应提示词生成器系统设计方案-v1.0-合并版.html`](docs/自适应提示词生成器系统设计方案-v1.0-合并版.html) |
-| 搭建执行方案（唯一搭建依据） | [`docs/提示词生成器系统-搭建执行方案.md`](docs/提示词生成器系统-搭建执行方案.md) |
-| 外部 Agent 连接器接口规范 | [`docs/外部Agent连接器接口规范-v1.0.html`](docs/外部Agent连接器接口规范-v1.0.html) |
-| 源码 | [`prompt5/src/prompt5/`](prompt5/src/prompt5/) |
-| 测试 | [`prompt5/tests/`](prompt5/tests/) |
-| JSON Schema（IR v3 / Patch v3 / TaskRequest v1 / EvalEvidence v1） | [`prompt5/specs/`](prompt5/specs/) |
-| M3 pilot 评测报告 | [`prompt5/reports/m3-pilot.md`](prompt5/reports/m3-pilot.md) |
-| 金标任务集 | [`prompt5/benchmarks/tasks.jsonl`](prompt5/benchmarks/tasks.jsonl) |
-| 工程过程台账（降级 / 决策 / 缺陷修复） | [`prompt5/NOTES.md`](prompt5/NOTES.md) |
-| 配置样例（密钥只走环境变量） | [`prompt5/config.example.yaml`](prompt5/config.example.yaml) |
 
 ---
 
 ## 快速开始
 
-```bash
+### Windows 桌面端
+
+```powershell
 cd prompt5
-python -m venv .venv
-.venv/Scripts/python -m pip install -i https://mirrors.aliyun.com/pypi/simple/ \
-    pytest pydantic fastapi uvicorn httpx PyYAML hypothesis
-.venv/Scripts/python -m pip install -e . --no-deps
-
-# 全量测试
-.venv/Scripts/python -m pytest tests -q
-
-# 端到端演示（从零生成）
-.venv/Scripts/python -m prompt5.cli demo-zero --task "把这份 CSV 做成分析报告"
-
-# M3 pilot 评测（离线模拟执行器）
-.venv/Scripts/python -m prompt5.cli pilot --quiet
-
-# API
-.venv/Scripts/python -m prompt5.api --dry
-.venv/Scripts/python -m prompt5.api --serve --port 8765
+powershell -ExecutionPolicy Bypass -File .\desktop\scripts\build-windows.ps1
 ```
 
-更完整的模块说明与命令清单见 [`prompt5/README.md`](prompt5/README.md)。
+构建产物：
+
+```text
+prompt5/desktop/release-windows/Prompt5-Setup-0.1.0.exe
+```
+
+安装后首次启动会自动初始化配置和 SQLite，无需额外安装运行时。安装包未做代码签名，SmartScreen 可能提示。
+
+> 安装包属于本机构建产物，未纳入 Git 仓库；克隆仓库后需执行上述脚本生成。
+
+### 本地 Web 开发
+
+```powershell
+cd prompt5
+python -m venv .venv
+.venv/Scripts/python -m pip install -e ".[dev]"
+
+cd web
+npm ci
+npm run test
+npm run build
+
+cd ..
+.venv/Scripts/python -m prompt5.ui --host 127.0.0.1 --port 8765
+```
+
+打开 <http://127.0.0.1:8765>。
+
+### 后端 CLI
+
+```powershell
+cd prompt5
+
+.venv/Scripts/python -m prompt5.cli demo-zero --task "把这份 CSV 做成分析报告"
+.venv/Scripts/python -m prompt5.export_schema
+.venv/Scripts/python -m prompt5.cli config check
+.venv/Scripts/python -m prompt5.tck
+```
+
+完整命令和配置说明见 [`prompt5/README.md`](prompt5/README.md)。
 
 ---
 
-## 设计要点（速览）
+## 测试与验收
 
-1. **IR 单一事实源**：`slots` + `item_ids` 稳定 ID 映射 + checksum（先校验后规范化计算）。
-2. **两阶段应用器**：纯函数执行、零部分应用；唯一写者是 `applier.py`，禁止绕过直接写库。
-3. **版本台账**：CAS（version/checksum 双校验）、墓碑、审计哈希链（篡改可检出）。
-4. **三级评估**：L1 规则 → L2 交换双裁（裁判 ≠ 被测族）→ L3 实际执行 + 机器判定。
-5. **统计验收纪律**：Wilcoxon / McNemar / TOST / bootstrap CI；功效不足时不得宣称有效。
-6. **fail-closed**：LLM 供应商故障不静默换模型；评测缓存按 `model_snapshot` / 环境分量 / 裁判隔离。
-7. **保护字段递归扫描**：`protect_class / provenance / created / meta` 任意深度拒绝写入。
-
----
-
-## 已知边界与待办
-
-- **真实模型端点未接入**：`GLM_URL / DSK_URL / QWEN_URL` + 对应 `*_KEY` 尚未提供；M3 pilot 使用**模拟执行器（scripted）**，报告已标注「不构成效果证据」。
-- **单进程边界**：SQLite + 线程模型仅适用于单 worker；多 worker 前必须切换 PostgreSQL（`NOTES.md #5`）。
-- **M4 起**：种子反解、补丁链、回归保护、意图门禁尚未开工。
-- **L3 权重蒸馏冻结**：法务评估前不实现（方案 §14 D-14）。
+| 范围 | 命令 | 结果 |
+|---|---|---|
+| 后端 | `cd prompt5 && .venv/Scripts/python -m pytest tests -q` | 407 passed / 30 subtests |
+| 前端行为 | `cd prompt5/web && npm run test` | 5 passed |
+| 前端构建 | `cd prompt5/web && npm run build` | 通过 |
+| 浏览器 smoke | `cd prompt5/web && npm run test:browser` | 六页、移动端、人工确认流程通过 |
+| Windows 安装 | `prompt5/desktop/scripts/build-windows.ps1` | 安装、启动、页面加载、退出清理通过 |
 
 ---
 
-## 文档阅读顺序建议
+## 当前进度
 
-1. [`docs/提示词生成器原理解析.html`](docs/提示词生成器原理解析.html) — 为什么这样设计  
-2. [`docs/自适应提示词生成器系统设计方案-v1.0-合并版.html`](docs/自适应提示词生成器系统设计方案-v1.0-合并版.html) — 系统设计定稿  
-3. [`docs/提示词生成器系统-搭建执行方案.md`](docs/提示词生成器系统-搭建执行方案.md) — 如何搭建（里程碑 / DoD / 硬约束）  
-4. [`prompt5/NOTES.md`](prompt5/NOTES.md) — 实现中踩过的坑与决策  
+| 阶段 | 状态 | 内容 |
+|---|---|---|
+| M0–M3 | 完成 | 基础设施、IR/Patch/Ledger、从零生成、评测引擎 |
+| M4 | 完成 | 种子反解、补丁链、回归保护、意图门禁 |
+| M5 | 完成 | 分层评测、统计、缓存与报告 |
+| M6 | 完成 | 在线会话、事件 outbox、连接器契约测试 |
+| M7 | 骨架完成 | 30 任务基准、隐藏集、B1-OSS 基线、预注册、门禁判定 |
+| UI0 | 完成 | 六页 React 工作台、UI 适配 API、行为测试、浏览器 smoke |
+| Desktop 0.1 | Windows 完成 | Electron 壳、单文件后端、NSIS 安装包 |
+
+M7 的真实 live 确证运行仍需要可用模型端点与密钥。
+
+---
+
+## 已知边界
+
+- 当前为本地单用户模式，无登录、多租户和权限体系
+- live 评测需要用户自行配置模型端点与 API Key
+- 演示模式使用固定快照，不构成真实模型效果证据
+- MCP 已实现工具注册与调度，传输层尚未接入
+- 回调推送尚未接 HTTP，当前使用拉取式事件通道
+- macOS / Linux 桌面端未实现
+- Windows 安装包未签名，使用 Electron 默认图标
+- SQLite + 线程模型适用于单 worker；多 worker 前需切换 PostgreSQL
+
+---
+
+## 文档导航
+
+1. [`prompt5/README.md`](prompt5/README.md) — 安装、使用、目录和测试
+2. [`prompt5/HANDOFF.md`](prompt5/HANDOFF.md) — 前端/桌面端交接与 UI API
+3. [`prompt5/NOTES.md`](prompt5/NOTES.md) — 工程决策、降级与踩坑记录
+4. [`docs/提示词生成器系统-搭建执行方案.md`](docs/提示词生成器系统-搭建执行方案.md) — 搭建依据与里程碑 DoD
+5. [`docs/自适应提示词生成器系统设计方案-v1.0-合并版.html`](docs/自适应提示词生成器系统设计方案-v1.0-合并版.html) — 设计定稿
 
 ---
 
 ## 许可
 
-未指定开源许可。若需公开发布，请先确认文档与代码的归属与授权范围。
+代码以 [`prompt5/LICENSE`](prompt5/LICENSE) 中的 MIT License 授权。
