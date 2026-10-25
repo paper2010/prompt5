@@ -1,0 +1,355 @@
+{
+  "$defs": {
+    "Constraints": {
+      "additionalProperties": false,
+      "properties": {
+        "must": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Must",
+          "type": "array"
+        },
+        "must_not": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Must Not",
+          "type": "array"
+        },
+        "style": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Style",
+          "type": "array"
+        }
+      },
+      "title": "Constraints",
+      "type": "object"
+    },
+    "Example": {
+      "additionalProperties": false,
+      "properties": {
+        "input": {
+          "title": "Input",
+          "type": "string"
+        },
+        "expected": {
+          "title": "Expected",
+          "type": "string"
+        }
+      },
+      "required": [
+        "input",
+        "expected"
+      ],
+      "title": "Example",
+      "type": "object"
+    },
+    "FreeformExtra": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        },
+        "provenance": {
+          "additionalProperties": true,
+          "title": "Provenance",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "text"
+      ],
+      "title": "FreeformExtra",
+      "type": "object"
+    },
+    "Goal": {
+      "additionalProperties": false,
+      "properties": {
+        "outcome": {
+          "default": "",
+          "title": "Outcome",
+          "type": "string"
+        },
+        "done_criteria": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Done Criteria",
+          "type": "array"
+        },
+        "non_goals": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Non Goals",
+          "type": "array"
+        }
+      },
+      "title": "Goal",
+      "type": "object"
+    },
+    "InputRef": {
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "title": "Ref",
+          "type": "string"
+        },
+        "type": {
+          "default": "text",
+          "enum": [
+            "text",
+            "json",
+            "image",
+            "pdf"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        },
+        "trust": {
+          "default": "user",
+          "enum": [
+            "user",
+            "derived"
+          ],
+          "title": "Trust",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "title": "InputRef",
+      "type": "object"
+    },
+    "OutputSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "default": "text",
+          "title": "Format",
+          "type": "string"
+        },
+        "schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schema"
+        },
+        "length_budget": {
+          "default": "",
+          "title": "Length Budget",
+          "type": "string"
+        }
+      },
+      "title": "OutputSpec",
+      "type": "object"
+    },
+    "ProtectEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "loc": {
+          "title": "Loc",
+          "type": "string"
+        },
+        "cls": {
+          "enum": [
+            "safety",
+            "hard_format",
+            "user_pinned"
+          ],
+          "title": "Cls",
+          "type": "string"
+        },
+        "state": {
+          "default": "proposed",
+          "enum": [
+            "proposed",
+            "enacted"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "by": {
+          "default": "system",
+          "title": "By",
+          "type": "string"
+        },
+        "at": {
+          "default": "",
+          "title": "At",
+          "type": "string"
+        },
+        "review_by": {
+          "default": "",
+          "title": "Review By",
+          "type": "string"
+        }
+      },
+      "required": [
+        "loc",
+        "cls"
+      ],
+      "title": "ProtectEntry",
+      "type": "object"
+    },
+    "Slots": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "default": "",
+          "title": "Role",
+          "type": "string"
+        },
+        "goal": {
+          "$ref": "#/$defs/Goal"
+        },
+        "inputs": {
+          "items": {
+            "$ref": "#/$defs/InputRef"
+          },
+          "title": "Inputs",
+          "type": "array"
+        },
+        "output": {
+          "$ref": "#/$defs/OutputSpec"
+        },
+        "constraints": {
+          "$ref": "#/$defs/Constraints"
+        },
+        "examples": {
+          "items": {
+            "$ref": "#/$defs/Example"
+          },
+          "title": "Examples",
+          "type": "array"
+        },
+        "workflow": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Workflow",
+          "type": "array"
+        },
+        "feedback_protocol": {
+          "additionalProperties": true,
+          "title": "Feedback Protocol",
+          "type": "object"
+        }
+      },
+      "title": "Slots",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "3",
+      "default": "3",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "ir_id": {
+      "title": "Ir Id",
+      "type": "string"
+    },
+    "version": {
+      "default": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "parent_ir_version": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Ir Version"
+    },
+    "lineage_id": {
+      "title": "Lineage Id",
+      "type": "string"
+    },
+    "checksum": {
+      "default": "",
+      "title": "Checksum",
+      "type": "string"
+    },
+    "created": {
+      "additionalProperties": true,
+      "title": "Created",
+      "type": "object"
+    },
+    "slots": {
+      "$ref": "#/$defs/Slots"
+    },
+    "freeform_extras": {
+      "items": {
+        "$ref": "#/$defs/FreeformExtra"
+      },
+      "title": "Freeform Extras",
+      "type": "array"
+    },
+    "provenance_map": {
+      "additionalProperties": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Provenance Map",
+      "type": "object"
+    },
+    "protect_registry": {
+      "items": {
+        "$ref": "#/$defs/ProtectEntry"
+      },
+      "title": "Protect Registry",
+      "type": "array"
+    },
+    "item_ids": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "title": "Item Ids",
+      "type": "object"
+    }
+  },
+  "required": [
+    "ir_id",
+    "lineage_id"
+  ],
+  "title": "IR",
+  "type": "object"
+}

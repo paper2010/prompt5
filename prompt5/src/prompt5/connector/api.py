@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Header, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from ..blobs import BlobError, BlobStore
@@ -29,6 +30,7 @@ from ..llm.client import MockLLM
 from ..modules.m3_cards import RENDERER_VERSION, render
 from ..modules.m5_eval.l1_rules import check as l1_check
 from ..modules.m6_sessions import SessionError, SessionStore
+from .rubric import build_rubric_draft
 
 __all__ = ["ServiceError", "Context", "ConnectorService", "build_connector_app"]
 
@@ -169,6 +171,8 @@ class ConnectorService:
             raise ServiceError("E_SCHEMA_INVALID", 422, f"unknown model card {model_id!r}")
 
         task_id = f"tk-{new_patch_id().lower()[:16]}"
+        materials = [item.model_dump(mode="json") for item in request.input.materials]
+        rubric = build_rubric_draft(text, materials)
         # 人工锚点不可绕过：先进入 rubric_pending，确认后才真正生成
         envelope = {
             "task_id": task_id,
@@ -177,7 +181,9 @@ class ConnectorService:
             "state": "rubric_pending",
             "result_class": "pending",
             "model": model_id,
-            "draft": {"text": text, "rubric_policy": request.input.rubric_policy},
+            "draft": {"text": text, "rubric_policy": request.input.rubric_policy,
+                      "materials": materials},
+            "rubric": rubric,
         }
         self.conn.execute(
             "INSERT INTO tasks(task_id, connector_id, op, state, stage, result_class,"
@@ -217,8 +223,12 @@ class ConnectorService:
         state = data["envelope"]["state"]
         if state in {"succeeded", "failed", "cancelled"}:
             raise ServiceError("E_FENCING_STALE", 409, f"task already {state}")
+        envelope = data["envelope"]
+        envelope.update({"state": "cancelled", "stage": "cancelled", "result_class": "pending"})
         self.conn.execute(
-            "UPDATE tasks SET state='cancelled', updated_at='now' WHERE task_id=?", (task_id,)
+            "UPDATE tasks SET state='cancelled', stage='cancelled', envelope_json=?,"
+            " updated_at='now' WHERE task_id=?",
+            (json.dumps(envelope, ensure_ascii=False), task_id),
         )
         return {"task_id": task_id, "state": "cancelled"}
 
@@ -233,10 +243,11 @@ class ConnectorService:
         envelope = data["envelope"]
         model_id = envelope["model"]
         text = envelope["draft"]["text"]
-        result = run_zero(text, llm=self.llm, model_id=model_id)
+        materials = envelope["draft"].get("materials", [])
+        result = run_zero(text, llm=self.llm, model_id=model_id, materials=materials)
         evidence = {
             "level": "L1",
-            "rubric_version": "confirmed-v1",
+            "rubric_version": envelope.get("rubric", {}).get("version", "confirmed-v1"),
             "metrics": {},
             "reproduction_tier": "T2",
             "model_snapshot": f"{model_id}@mock",
@@ -246,6 +257,9 @@ class ConnectorService:
             "label": None,
             "expires_at": None,
         }
+        exists = self.conn.execute("SELECT 1 FROM irs WHERE ir_id=?", (result.ir.ir_id,)).fetchone()
+        if not exists:
+            self.ledger.create_ir(result.ir.payload() | {"checksum": result.ir.checksum})
         envelope.update(
             {
                 "state": "succeeded",
@@ -254,6 +268,8 @@ class ConnectorService:
                 "rendered": {"text": result.rendered.text, "cache_key": result.rendered.cache_key},
                 "l1": result.l1.to_dict(),
                 "evidence": evidence,
+                "execution": {"kind": "mock", "label": "Mock 生成 · 不代表目标模型真实输出"},
+                "rubric_state": "confirmed",
             }
         )
         self.conn.execute(
@@ -265,7 +281,10 @@ class ConnectorService:
 
     def evidence(self, ctx: Context, task_id: str) -> dict[str, Any]:
         self._require(ctx, "governance.read.v1")
-        return self._load_task(ctx, task_id)["envelope"]["evidence"]
+        envelope = self._load_task(ctx, task_id)["envelope"]
+        if "evidence" not in envelope:
+            raise ServiceError("E_FENCING_STALE", 409, "task evidence is not ready")
+        return envelope["evidence"]
 
     # ---------------------------------------------------------------- sync ops
     def _parse_ir(self, payload: dict[str, Any]) -> IR:
@@ -395,11 +414,24 @@ class ConnectorService:
 
 # ---------------------------------------------------------------- HTTP binding
 def build_connector_app(config: dict[str, Any], *, db_path: str = ":memory:",
-                        blob_root: str | Path | None = None) -> FastAPI:
+                        blob_root: str | Path | None = None,
+                        project_root: str | Path | None = None,
+                        config_path: str | Path | None = None) -> FastAPI:
     service = ConnectorService(config, db_path=db_path, blob_root=blob_root)
     app = FastAPI(title="prompt5-connector", version="1.0.0")
     app.state.service = service
     app.state.config = config
+    ui_options = config.get("ui") or {}
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=ui_options.get("cors_origins") or [
+            "http://127.0.0.1:5173", "http://localhost:5173",
+            "http://127.0.0.1:4173", "http://localhost:4173",
+        ],
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Tenant-Id", "X-Blob-Mime"],
+    )
 
     @app.exception_handler(ServiceError)
     async def _service_error(_: Request, exc: ServiceError) -> JSONResponse:
@@ -554,4 +586,9 @@ def build_connector_app(config: dict[str, Any], *, db_path: str = ":memory:",
                           x_tenant_id: str | None = Header(default=None)) -> dict[str, Any]:
         return service.request_model_card(ctx_from_headers(authorization, x_tenant_id), payload)
 
+    from .ui_api import register_ui_routes
+    register_ui_routes(
+        app, service, ctx_from_headers,
+        project_root=project_root, config_path=config_path,
+    )
     return app

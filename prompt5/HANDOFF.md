@@ -1,6 +1,7 @@
 # HANDOFF · 可视化开发交接说明
 
-> 本仓库是**后端框架**（Python），不含任何 UI。接下来由你（前端/全栈）在它之上做可视化产品。
+> 本仓库包含**后端框架**（Python）和已接入的 **React 本地单用户工作台**（`web/`）。
+> 后端核心契约不变；UI 通过新增的 `connector/ui_api.py` 适配层调用既有能力。
 > 请不要重写后端核心，也不要绕过下面「交互约束」里的规则——它们是这套系统的正确性前提。
 
 ## 1. 它是什么
@@ -120,3 +121,44 @@ curl -s localhost:8765/v1/tasks/<task_id> -H "Authorization: $TOKEN"
 - 配置页能显示 `config check` 的错误（缺端点/缺密钥/裁判池不足）并阻止保存；
 - 任何写操作失败时展示 `error_code` 而非「未知错误」；
 - 所有声明性文案通过第 6 节检查（无越界表述）。
+
+## 10. UI 交付状态（v0.1）
+
+### 六页
+
+1. `/` 任务工作台：创建任务 → 后端返回版本化 Rubric 草案 → 显式勾选并点击确认 → 查看 IR / 渲染 / L1 / Evidence。
+2. `/editor` IR 编辑 + Diff：Schema 驱动字段、稳定 item ID、保护项只读、Patch Diff、删除必须填写 evidence_refs。
+3. `/evaluation` 评测面板：scripted/live、逐任务通过率、95% CI、McNemar p、预注册门禁标签与声明。
+4. `/settings` 配置：providers / roles / targets，校验错误阻止保存，密钥只显示环境变量状态，探针读取服务端生效配置。
+5. `/sessions` 会话回放：turns、events、suggestions、epoch、增量拉取；suggestion 产生/应用链路未闭环处不做假按钮。
+6. `/benchmark` 基准与预注册：30 任务、split、frozen_at 只读；隐藏集只显示隔离状态，不返回 simulation/gold。
+
+### UI 命令
+
+```bash
+cd prompt5/web
+npm install
+npm run test                 # 5 个关键行为测试
+npm run build                # tsc --noEmit + vite build
+npm run test:browser         # 六页 / 移动端 / 人工确认浏览器 smoke
+npm run start                # 启动 python -m prompt5.ui --port 8765
+```
+
+### 新增 UI 适配 API
+
+| 能力 | 方法/路径 | 状态 |
+|---|---|---|
+| Rubric 草案 | `GET /v1/ui/tasks/{id}/rubric` | ✅ 与确认后 evidence 版本一致 |
+| Patch 应用 | `POST /v1/ui/ir/patch` | ✅ 复用 Ledger，version+1，checksum 由服务端重算 |
+| 评测报告 | `GET /v1/ui/evaluations/latest` / `POST /v1/ui/evaluations/run` | ✅ scripted 离线；live 需真实端点 |
+| 配置 | `GET/PUT /v1/ui/config` · `POST /v1/ui/config/check` · `POST /v1/ui/config/probe` | ✅ 白名单字段，密钥不回显 |
+| 会话回放 | `GET /v1/ui/sessions/{id}/replay` | ✅ turns/events/suggestions |
+| 基准 | `GET /v1/ui/benchmark` | ✅ 脱敏任务字段，隐藏集不暴露 |
+
+### 已验证
+
+- 后端：`pytest tests -q` → **407 passed / 30 subtests**。
+- 前端：`npm run test` → **5 passed**；`npm run build` → **tsc + vite 通过**。
+- 浏览器：六页加载、移动端 `scrollWidth=390`、无横向溢出、“创建 → 人工确认 → 结果”完整通过。
+- 生成结果当前仍使用 `MockLLM`，UI 会显示「Mock 生成 · 不代表目标模型真实输出」。
+- 本地 UI 是单用户边界；公开多用户部署前仍需网关层补真实用户体系和密钥注入。

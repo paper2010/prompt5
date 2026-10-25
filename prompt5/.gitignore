@@ -19,6 +19,7 @@ prompt5.db*
 # ---- 环境与密钥 ----
 .env
 config.yaml
+config.yaml.bak
 *.pem
 *.key
 
