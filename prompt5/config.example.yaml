@@ -1,0 +1,68 @@
+# prompt5 配置示例 —— 复制为 config.yaml 后按需填写
+# 接入任意「OpenAI 兼容」厂商：只需在 providers 里加一条，roles/targets 引用它即可。
+# 密钥三种写法（按推荐度排序）：
+#   1) api_key_env: "GLM_KEY"        → 从环境变量读取（推荐，不落盘）
+#   2) api_key: "${GLM_KEY}"         → 配置内占位，仍由环境变量注入
+#   3) api_key: "sk-..."             → 明文（config check 会告警，不建议提交仓库）
+
+server:
+  host: "127.0.0.1"
+  port: 8765
+
+# ── 供应商（端点地址、密钥、超时、额外请求头）─────────────────────────────
+providers:
+  glm:
+    display: "智谱 GLM（OpenAI 兼容）"
+    base_url: "${GLM_URL}"           # 例：https://open.bigmodel.cn/api/paas/v4
+    api_key_env: "GLM_KEY"
+    api_style: "openai"
+    timeout: 120
+    headers: {}
+  deepseek:
+    display: "DeepSeek"
+    base_url: "${DSK_URL}"           # 例：https://api.deepseek.com/v1
+    api_key_env: "DSK_KEY"
+    api_style: "openai"
+    timeout: 120
+  qwen:
+    display: "阿里云百炼 Qwen（OpenAI 兼容）"
+    base_url: "${QWEN_URL}"          # 例：https://dashscope.aliyuncs.com/compatible-mode/v1
+    api_key_env: "QWEN_KEY"
+    api_style: "openai"
+  local:
+    display: "自托管（vLLM / Ollama / LM Studio）"
+    base_url: "${LOCAL_LLM_URL}"     # 例：http://127.0.0.1:8000/v1
+    api_key_env: "LOCAL_LLM_KEY"
+    api_key_required: false          # 本地无鉴权时置 false
+    timeout: 60
+
+# ── 四角色默认配置（执行方案 §8.2；回避规则由 CI 断言）──────────────────
+roles:
+  generator:  {provider: "glm",      model: "glm-5"}
+  judge_glm:  {provider: "deepseek", model: "deepseek-v"}
+  judge_dsk:  {provider: "qwen",     model: "qwen-max"}
+  judge_qwen: {provider: "deepseek", model: "deepseek-v"}
+  reflector:  {provider: "glm",      model: "glm-5"}
+
+# ── 被测目标三模型（label 未经门禁不得改写）─────────────────────────────
+targets:
+  glm5:     {provider: "glm",      model: "glm-5",        tier: "T2", label: "optimizing"}
+  deepseek: {provider: "deepseek", model: "deepseek-v",   tier: "T2", label: "optimizing"}
+  qwen_oss: {provider: "local",    model: "qwen-oss-14b", tier: "T1", label: "compatible"}
+
+budgets:
+  per_task_tokens: 250000
+  tenant_daily_tokens: 2000000
+  global_concurrent_tasks: 8
+  queue_sla_p95: "600s"
+
+connectors:
+  - id: "host-agent-alpha"
+    tenant_id: "t-001"
+    enabled: true
+    scopes: [discovery.v1, generate.v1, render.v1, score.v1]
+    budget: {max_tasks_per_day: 200, l3_deep_eval: false}
+    callbacks:
+      enabled: false
+      retry: {policy: "exponential", max_attempts: 5, backoff_base: "2s", jitter: true}
+    extensions: {"x-acme-tenant-tag": "dev"}

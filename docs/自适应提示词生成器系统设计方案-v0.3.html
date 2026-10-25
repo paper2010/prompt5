@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自适应提示词生成器 · 系统设计方案 v0.3（S0 关闭版）</title>
+<style>
+  :root{
+    --ink:#171a20;--ink-2:#333a45;--muted:#67707e;--faint:#8b95a3;
+    --line:#e4e7ec;--line-2:#eef0f4;--bg:#ffffff;--soft:#f7f8fa;--soft-2:#f1f4f9;
+    --accent:#2b54c4;--accent-soft:#eaeffc;
+    --teal:#0d7268;--teal-soft:#e6f4f1;
+    --amber:#a55a08;--amber-soft:#fdf3e3;
+    --rose:#a8323a;--rose-soft:#fbeceb;
+    --violet:#6d3fb8;--violet-soft:#f1ecfb;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Inter","Segoe UI",system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    font-size:16px;line-height:1.78;letter-spacing:.01em;-webkit-font-smoothing:antialiased;}
+  .wrap{display:grid;grid-template-columns:212px minmax(0,1fr);gap:56px;max-width:1160px;margin:0 auto;padding:0 40px 120px;}
+  .toc{position:sticky;top:0;align-self:start;max-height:100vh;overflow:auto;padding:52px 0 40px;font-size:13px;line-height:1.6;}
+  .toc-title{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:14px;font-weight:600;}
+  .toc a{display:block;color:var(--muted);text-decoration:none;padding:5px 0 5px 12px;border-left:2px solid var(--line-2);transition:.15s;}
+  .toc a:hover{color:var(--accent);border-left-color:var(--accent);}
+  .toc a.lv1{font-weight:600;color:var(--ink-2);margin-top:10px;}
+  .toc a.lv2{padding-left:24px;font-size:12.5px;}
+  header{padding:64px 0 0;}
+  .kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:18px;}
+  h1{font-size:36px;line-height:1.25;letter-spacing:-.02em;font-weight:750;margin:0 0 18px;color:#0e1116;}
+  .sub{font-size:17px;color:var(--muted);line-height:1.75;margin:0 0 26px;max-width:46em;}
+  .meta{display:flex;flex-wrap:wrap;gap:10px;font-size:12.5px;color:var(--faint);padding-bottom:26px;border-bottom:1px solid var(--line);}
+  .meta span{padding:3px 10px;background:var(--soft);border-radius:999px;}
+  section{padding-top:54px;}
+  h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);font-weight:700;margin:0 0 8px;}
+  h3{font-size:26px;line-height:1.35;font-weight:700;letter-spacing:-.01em;margin:0 0 22px;color:#0e1116;padding-bottom:16px;border-bottom:1px solid var(--line);}
+  h4{font-size:18.5px;line-height:1.5;font-weight:700;margin:38px 0 12px;color:#12161d;}
+  h5{font-size:15px;font-weight:700;margin:22px 0 8px;color:var(--ink-2);}
+  p{margin:0 0 15px;}
+  strong{font-weight:650;color:#0f1319;}
+  em{font-style:normal;background:linear-gradient(transparent 62%,#fdf0c8 62%);padding:0 1px;}
+  a{color:var(--accent);}
+  code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:.875em;background:var(--soft-2);padding:1.5px 5px;border-radius:4px;color:#243046;}
+  pre{background:#0f1420;color:#dbe2ee;border-radius:var(--radius);padding:18px 20px;overflow-x:auto;font-size:13px;line-height:1.65;margin:18px 0;}
+  pre code{background:none;padding:0;color:inherit;font-size:inherit;}
+  .lead{font-size:17px;line-height:1.8;color:var(--ink-2);border-left:2px solid var(--accent);padding-left:20px;margin:0 0 24px;}
+  .note{background:var(--soft);border:1px solid var(--line);border-radius:var(--radius);padding:18px 22px;font-size:14.5px;line-height:1.72;color:var(--ink-2);margin:22px 0;}
+  .note .tag{display:inline-block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--faint);margin-bottom:6px;}
+  .key{background:var(--accent-soft);border:1px solid #d3ddf8;border-left:3px solid var(--accent);border-radius:6px;padding:16px 20px;margin:22px 0;font-size:15px;line-height:1.72;color:#1c2a4a;}
+  .key b{color:var(--accent);}
+  .key.rose{background:var(--rose-soft);border-color:#eec7c9;border-left-color:var(--rose);}
+  .key.rose b{color:var(--rose);}
+  .key.violet{background:var(--violet-soft);border-color:#dccff6;border-left-color:var(--violet);}
+  .key.violet b{color:var(--violet);}
+  figure{margin:30px 0;padding:0;}
+  figure svg{display:block;width:100%;height:auto;background:var(--soft);border:1px solid var(--line);border-radius:var(--radius);}
+  figcaption{font-size:12.5px;color:var(--faint);margin-top:9px;line-height:1.6;text-align:center;}
+  .scroll{overflow-x:auto;margin:24px 0;border:1px solid var(--line);border-radius:var(--radius);}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;line-height:1.6;min-width:640px;}
+  th{background:#f4f6f9;text-align:left;font-weight:700;color:var(--ink-2);padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap;font-size:12.8px;}
+  td{padding:10px 14px;border-bottom:1px solid var(--line-2);vertical-align:top;color:var(--ink-2);}
+  tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:#fafbfc;}
+  td.hd{font-weight:650;color:var(--ink);background:#fcfcfd;}
+  ul,ol{margin:0 0 16px;padding-left:1.35em;}
+  li{margin:0 0 7px;}
+  li::marker{color:var(--faint);}
+  .tight li{margin-bottom:4px;}
+  .chip{display:inline-block;font-size:11.5px;padding:2px 9px;border-radius:999px;font-weight:600;margin-right:6px;}
+  .c-s0{background:var(--rose-soft);color:var(--rose);}
+  .c-p1{background:var(--amber-soft);color:var(--amber);}
+  .c-s2{background:var(--teal-soft);color:var(--teal);}
+  .steps{counter-reset:s;list-style:none;padding:0;margin:18px 0;}
+  .steps li{counter-increment:s;position:relative;padding-left:38px;margin-bottom:13px;}
+  .steps li::before{content:counter(s);position:absolute;left:0;top:1px;width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:"SFMono-Regular",Consolas,monospace;}
+  .steps b{display:block;margin-bottom:2px;}
+  footer{margin-top:70px;padding-top:28px;border-top:1px solid var(--line);font-size:13px;color:var(--faint);line-height:1.8;}
+  @media (max-width:980px){
+    .wrap{grid-template-columns:1fr;gap:0;padding:0 24px 80px;}
+    .toc{display:none;}
+    h1{font-size:29px;}
+    h3{font-size:21px;}
+    header{padding-top:40px;}
+  }
+  @media print{
+    .toc{display:none;}
+    .wrap{display:block;max-width:none;padding:0;}
+    section,figure{page-break-inside:avoid;}
+    body{font-size:11pt;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav class="toc">
+  <div class="toc-title">目录</div>
+  <a href="#s0" class="lv1">v0.3 总览</a>
+  <a href="#s0-1" class="lv2">12 项意见处置表</a>
+  <a href="#s0-2" class="lv2">声明门禁</a>
+  <a href="#s1" class="lv1">一 · loc 与 checksum 定稿</a>
+  <a href="#s1-1" class="lv2">1.1 loc 正式文法</a>
+  <a href="#s1-2" class="lv2">1.2 稳定 ID 与墓碑</a>
+  <a href="#s1-3" class="lv2">1.3 Canonical JSON 与 checksum</a>
+  <a href="#s1-4" class="lv2">1.4 Patch 操作顺序语义</a>
+  <a href="#s2" class="lv1">二 · 统计验收定稿</a>
+  <a href="#s2-1" class="lv2">2.1 校准/确证切分</a>
+  <a href="#s2-2" class="lv2">2.2 检验与评审规则</a>
+  <a href="#s3" class="lv1">三 · 保护类权限模型</a>
+  <a href="#s4" class="lv1">四 · 复现层级 T1/T2/T3</a>
+  <a href="#s5" class="lv1">五 · P1 补丁包</a>
+  <a href="#s5-1" class="lv2">5.1 意图新鲜度</a>
+  <a href="#s5-2" class="lv2">5.2 在线参数表</a>
+  <a href="#s5-3" class="lv2">5.3 信任边界扩充</a>
+  <a href="#s5-4" class="lv2">5.4 预算表</a>
+  <a href="#s6" class="lv1">六 · S2 延后项裁定</a>
+  <a href="#s7" class="lv1">七 · 阶段门禁 v3</a>
+</nav>
+
+<main>
+
+<header>
+  <div class="kicker">System Design · Revision v0.3 · S0 Closure</div>
+  <h1>自适应提示词生成器：系统设计方案 v0.3</h1>
+  <p class="sub">响应第二轮复审：4 项 S0 阻塞项（loc 契约、统计口径、保护类权限、复现层级）全部在设计层关闭——不再是「待规范解决」，而是本版直接定稿；8 项 P1/S2 意见同步处置。方案由此从「可做工程规范」推进到「规范只需转写 + 用例化」。</p>
+  <div class="meta">
+    <span>v0.3 · S0 关闭版</span>
+    <span>处置 12 项意见</span>
+    <span>5 项设计定稿</span>
+    <span>2026-10-24</span>
+  </div>
+</header>
+
+<section id="s0">
+  <h3>v0.3 总览：这一版把「留给规范的问题」变成「写进设计的答案」</h3>
+  <p class="lead">第二轮复审的正确性这次没有争议：12 项全部接受。其中 4 项 S0 的特殊性在于——它们不是「还没写的文档」，而是<strong>没有做出的决定</strong>。因此 v0.3 的原则是：凡属决策的（文法、序列化标准、检验方法、权限模型、复现层级），在本版直接定稿；凡属工程量的（JSON Schema 文件、用例集、应用器实现），进入 P0-前置的转写清单。</p>
+
+  <h4 id="s0-1">0.1 十二项意见处置对照表</h4>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:34px">#</th><th style="width:230px">复审意见</th><th style="width:80px">级别</th><th>处置与落点</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">1</td><td>loc 无正式文法、下标漂移、无稳定 ID、无 canonical JSON、Patch 内操作顺序未定义</td><td><span class="chip c-s0">S0</span></td><td><strong>§1 全节定稿</strong>：loc 文法（EBNF）、列表项稳定 uid、墓碑机制、RFC 8785 canonical JSON、SHA-256 计算式与排除字段、操作按序原子执行、同 loc 冲突禁令。</td></tr>
+      <tr><td class="hd">2</td><td>CI 重叠判无差异错误；样本单位不明；无多重比较控制；评审一致率缺失；预注册恐成事后调参</td><td><span class="chip c-s0">S0</span></td><td><strong>§2 全节定稿</strong>：废除 CI 重叠判据；样本单位 = 任务；校准集(10)/确证集(20)物理切分，先校准后预注册再确证，杜绝事后调参；Wilcoxon 符号秩 + McNemar 配对检验；Holm 多重比较控制；Krippendorff α ≥ 0.67 与 2/3 多数裁决。</td></tr>
+      <tr><td class="hd">3</td><td>protect_registry 无权限边界，生成器可自我保护</td><td><span class="chip c-s0">S0</span></td><td><strong>§3 定稿</strong>：proposed / enacted 两态；enact 权限仅限用户与管理员，生成器永无 enact 权；90 天复核周期；解除留痕；保护滥用率纳入审计抽检。</td></tr>
+      <tr><td class="hd">4</td><td>「可精确复现」超出模型快照能力；解码参数不全；无降级口径</td><td><span class="chip c-s0">S0</span></td><td><strong>§4 定稿</strong>：复现三级 T1（钉死快照）/T2（别名+指纹）/T3（仅别名），对应三级声明阶梯；解码捕获清单补齐 top_p/stop/seed/请求指纹/模板版本；T2/T3 强制周期漂移巡检，fingerprint 变化即级联失效缓存与结论。</td></tr>
+      <tr><td class="hd">5</td><td>session_epoch 覆盖不了「意图变了但 IR 没变」</td><td><span class="chip c-p1">P1</span></td><td>§5.1：在途补丁四元组校验升级为 <code>{epoch, base_checksum, intent_hash, context_hash}</code>；任何新对话轮改变 context_hash → 在途补丁自动作废重排。</td></tr>
+      <tr><td class="hd">6</td><td>k/m/失败签名/误伤分母/零建议期均未定义</td><td><span class="chip c-p1">P1</span></td><td>§5.2 参数表全量给出：k=3、m=2、签名 = (失败类, loc 提示桶, 现象聚类)；误伤分母 = 已应用补丁；零建议期报 N/A 不报 0；「建议采纳率」与「采纳后改善率」拆成两个指标。</td></tr>
+      <tr><td class="hd">7</td><td>威胁模型漏掉模型卡、渲染模板、评测用例、人工备注</td><td><span class="chip c-p1">P1</span></td><td>§5.3：四类输入列入统一信任边界表——数据面上同样过注入检测，修改面上要求双人审批 + 回归；存储型注入测试覆盖全部 10 类输入源。</td></tr>
+      <tr><td class="hd">8</td><td>只算调用次数没算成本时延；人工评审未量化</td><td><span class="chip c-p1">P1</span></td><td>§5.4 预算表结构定稿：单任务 token/时延/重试上限、金标 15–30 人时（含培训与争议裁决总估 25–45 人时）、抽检人时、P0a/P0b 总预算栏；绝对值待 D2 选型实测后填入，预算不足时金标降级为 8+12 并如实报告检验功效下降。</td></tr>
+      <tr><td class="hd">9</td><td>组合消融成本失控</td><td><span class="chip c-s2">S2</span></td><td>§6：top-K 筛查（K=5）+ 对数上限 ≤10 对 + 单次消融会话预算封顶；P2 落地为运营规范。</td></tr>
+      <tr><td class="hd">10</td><td>DPO 训练目标未定（整 IR / Patch / slot 重写？）</td><td><span class="chip c-s2">S2</span></td><td>§6：<strong>本版裁定</strong>——主目标 = Patch 序列预测（输入：上下文+意图框架+基线 IR+缺陷证据；输出：v2 操作序列），辅助目标 = 种子→IR 结构化抽取（仅 SFT）；整 IR 自由生成不作为训练目标。</td></tr>
+      <tr><td class="hd">11</td><td>删除传播无法作用于已训权重</td><td><span class="chip c-s2">S2</span></td><td>§6：「可撤销」限定为原始记录、策略卡、示例、缓存与未训练数据集；权重层只能回滚 / 影子版本 / 重训，并强制维护 checkpoint↔数据批次血缘映射以便定位回滚对象。</td></tr>
+      <tr><td class="hd">12</td><td>同族裁判校准开放</td><td><span class="chip c-s2">S2</span></td><td>§6：保留为 P2 触发式任务——若 D2 被迫同族，则先建 50 对人工标定集、测偏好方向、加校正项、季度复标，P2 质量门增加标定报告。</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4 id="s0-2">0.2 声明门禁（采纳复审最终建议）</h4>
+  <div class="key rose">
+    <b>两条声明在 S0 关闭审计通过前冻结：</b>系统与文档不得宣称「<b>评测可复现</b>」与「<b>补丁可确定性重放</b>」。冻结期的合法措辞分别为「复现层级以 §4 定义的 T1/T2/T3 为准」与「应用器按 §1 契约实现并通过用例集」。解冻条件：三份规范的评审通过记录 + §1/§4 用例集（含非法样本）全部绿灯，由人工审核门签字。
+  </div>
+  <p>复审同时确认的并行策略一并采纳：<strong>P0a 的基准任务集与原型设计可以立即开工</strong>（不依赖 loc 契约），但应用器编码与任何「可复现」措辞必须等 S0 审计。阶段门禁见 §7。</p>
+</section>
+
+<section id="s1">
+  <h2><span class="num">一</span> / S0-1 Closure</h2>
+  <h3>loc 与 checksum 契约：设计定稿</h3>
+
+  <h4 id="s1-1">1.1 loc 正式文法（v1）</h4>
+  <pre><code># loc 文法 v1 —— 补丁与缓存寻址的唯一合法形式
+loc        := root "." segment ( "." segment )*
+root       := "slots" | "freeform_extras"        # meta/protect_registry 不可经普通 Patch 修改
+segment    := field | list_select
+field      := identifier                          # 例：slots.goal.outcome
+list_select := field "[" item_id "]"               # 例：slots.constraints.must[c-must-001]
+                                                            #  ↑ 方括号内是稳定 ID，不是数组下标
+item_id    := [a-z0-9-]{6,16}                     # 分配规则见 1.2
+
+# 违法示例（应用器必须拒绝，错误码见 1.4）
+# slots.constraints.must[0]      → 下标寻址（E_INDEX_FORBIDDEN）
+# slots.meta.version             → 越权根（E_ROOT_FORBIDDEN）
+# freeform_extras[F-3].text      → 允许：自由项字段可 REWRITE，但不可经 loc 增删子字段</code></pre>
+  <p>复审指出「<code>must[0]</code> 在删除、插入、MOVE 后会漂移」——定稿裁决是<strong>彻底废除下标寻址</strong>：持久化 loc 中只允许稳定 ID。数组顺序只影响渲染顺序，不影响寻址；重排走 MOVE，永不改键。由此删除、插入、MOVE 三类操作之后，历史 loc 全部保持可解析（或命中墓碑，见 1.2）。</p>
+
+  <h4 id="s1-2">1.2 稳定 ID 分配与墓碑机制</h4>
+  <ul class="tight">
+    <li><strong>分配即确定</strong>：列表项创建时分配 <code>item_id</code>，由 <code>hash(patch_id, op_index)</code> 或 <code>hash(ir_id, creation_seq)</code> 确定性派生（非时间戳类 ULID）。重放同一 Patch 必得同一 ID——这是「确定性重放」能成立的前提。</li>
+    <li><strong>ID 永不复用</strong>：DELETE 不物理移除，写入台账墓碑（tombstone：<code>item_id</code>、删除补丁、时间、证据引用）。墓碑永久保留。</li>
+    <li><strong>命中墓碑的 loc</strong>：应用器返回 <code>E_LOC_RETIRED</code>，整包拒绝——比静默 CAS 失败给出更精确的错误归因，同时天然阻止 ID 复用攻击。</li>
+    <li><strong>同 loc 单补丁单操作</strong>：一个 Patch 内禁止两条 op 指向同一 loc（需多步改同一路径时拆成多个 Patch，形成链）。</li>
+  </ul>
+
+  <h4 id="s1-3">1.3 Canonical JSON 与 checksum 计算式</h4>
+  <pre><code>序列化标准：RFC 8785（JCS）——键排序、无冗余空白、UTF-8、
+             数值按 ECMAScript JSON.stringify 规范化
+checksum    = SHA-256( JCS( IR \ { checksum } ) )   # 唯一排除字段：checksum 自身
+                                                              # version / created / 全部 slots 均参与计算
+实现要求：  任何语言实现必须通过同一组官方测试向量
+             （规范交付物的一部分，含中文键名、空数组、0.1 类浮点等边界样本）</code></pre>
+  <p>选择 RFC 8785 而非自定规则的理由：它把「键序、空白、数值规范化」三件最容易实现走样的事全部钉死，且有现成测试向量可引用——复审担心的「相同 IR 产生不同 checksum」由测试向量闭合。</p>
+
+  <h4 id="s1-4">1.4 Patch 操作顺序与原子性语义</h4>
+  <ol class="steps">
+    <li><b>按序执行</b>：ops 严格按数组顺序执行；第 N 条 op 针对「前 N−1 条已应用后的状态」校验与应用。应用器不得重排。</li>
+    <li><b>全有或全无</b>：任何一条 op 失败（含前置 CAS、loc 解析、保护类冲突），整包拒绝，副本丢弃，零部分应用。</li>
+    <li><b>先验后用</b>：应用前依次校验 <code>base.checksum</code>（CAS）→ 全部 loc 可解析且无墓碑 → 保护类约束（enacted 项不可 DELETE）→ 同 loc 唯一性。四关全过才开始变更。</li>
+    <li><b>纯函数</b>：应用器 = <code>(base_IR, Patch) → new_IR</code> 的纯函数，不读时钟、不读随机源、不打外部服务；所有时间戳取自 Patch 头部而非应用时刻。</li>
+  </ol>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:200px">错误码</th><th>触发</th></tr></thead>
+    <tbody>
+      <tr><td class="hd"><code>E_BASE_DRIFT</code></td><td>base.checksum 与当前不符（基线已被其他补丁更新）</td></tr>
+      <tr><td class="hd"><code>E_INDEX_FORBIDDEN</code></td><td>loc 含数组下标</td></tr>
+      <tr><td class="hd"><code>E_ROOT_FORBIDDEN</code></td><td>loc 越权进入 meta / protect_registry</td></tr>
+      <tr><td class="hd"><code>E_LOC_RETIRED</code></td><td>loc 命中墓碑</td></tr>
+      <tr><td class="hd"><code>E_PROTECT_ENACTED</code></td><td>DELETE 目标为 enacted 保护项</td></tr>
+      <tr><td class="hd"><code>E_LOC_CONFLICT</code></td><td>同 Patch 内多条 op 指向同一 loc</td></tr>
+      <tr><td class="hd"><code>E_IDEM_REPLAY</code></td><td>幂等键命中（非错误：返回首次结果，不重复应用）</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 680 208" role="img" aria-label="补丁应用器四关校验流程">
+      <rect x="14" y="24" width="120" height="44" rx="8" fill="#eaeffc" stroke="#c3d1f2"/>
+      <text x="74" y="50" text-anchor="middle" font-size="12" font-weight="700" fill="#2b54c4">Patch 到达</text>
+      <rect x="160" y="24" width="108" height="44" rx="8" fill="#ffffff" stroke="#d8dde5"/>
+      <text x="214" y="50" text-anchor="middle" font-size="11" font-weight="700" fill="#333a45">① CAS 校验</text>
+      <rect x="294" y="24" width="108" height="44" rx="8" fill="#ffffff" stroke="#d8dde5"/>
+      <text x="348" y="50" text-anchor="middle" font-size="11" font-weight="700" fill="#333a45">② loc 全量解析</text>
+      <rect x="428" y="24" width="108" height="44" rx="8" fill="#ffffff" stroke="#d8dde5"/>
+      <text x="482" y="50" text-anchor="middle" font-size="11" font-weight="700" fill="#333a45">③ 保护类冲突</text>
+      <rect x="562" y="24" width="104" height="44" rx="8" fill="#ffffff" stroke="#d8dde5"/>
+      <text x="614" y="50" text-anchor="middle" font-size="11" font-weight="700" fill="#333a45">④ 同 loc 唯一</text>
+      <path d="M134,46 L152,46" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#fa)"/>
+      <line x1="268" y1="46" x2="286" y2="46" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#fa)"/>
+      <line x1="402" y1="46" x2="420" y2="46" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#fa)"/>
+      <line x1="536" y1="46" x2="554" y2="46" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#fa)"/>
+      <path d="M614,68 L614,120 L340,120" fill="none" stroke="#0d7268" stroke-width="1.5" marker-end="url(#fa)"/>
+      <text x="480" y="112" text-anchor="middle" font-size="10.5" font-weight="700" fill="#0d7268">四关全过 → 副本上按序执行 → 原子提交新 IR + 台账</text>
+      <path d="M214,68 L214,156 L400,156" fill="none" stroke="#a8323a" stroke-width="1.4" marker-end="url(#fa)"/>
+      <text x="300" y="176" text-anchor="middle" font-size="10.5" font-weight="700" fill="#a8323a">任一关失败 → 整包拒绝 + 精确错误码（E_*），零部分应用</text>
+      <defs>
+        <marker id="fa" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" fill="#9aa4b2"/>
+        </marker>
+      </defs>
+    </svg>
+    <figcaption>图 1　应用器四关校验。复审特别追问的「loc 失效后的结果」由错误码体系回答：每种失效都有确定行为，不存在静默失败。</figcaption>
+  </figure>
+</section>
+
+<section id="s2">
+  <h2><span class="num">二</span> / S0-2 Closure</h2>
+  <h3>统计验收口径：设计定稿</h3>
+
+  <div class="key rose">
+    <b>废除一条，补上五条。</b>废除：「两组 CI 重叠即记无显著差异」（复审正确指出这在配对设计下不成立）。补上：样本单位、配对检验、多重比较控制、评审一致率、预注册时序。以下五项合起来构成评测规范的统计骨架，规范只做转写。
+  </div>
+
+  <h4 id="s2-1">2.1 校准 / 确证物理切分：把「预注册」从口号变成时序约束</h4>
+  <ol class="steps">
+    <li><b>基准构建</b>：30 个金标任务固定切分为<strong>校准集 10 + 确证集 20</strong>，切分一经确定不可调整（防止「看完结果再定区间」）。</li>
+    <li><b>校准阶段</b>：系统只允许接触校准集；在它上面调 rubric、定验收阈值、跑通流程。</li>
+    <li><b>预注册</b>：主指标、检验方法、显著性水平（α=0.05）、通过阈值、Holm 校正范围，全部写入带时间戳的分析计划并冻结。此后任何修改都构成新的实验（须重新跑确证集）。</li>
+    <li><b>确证一次</b>：系统在确证集上单次运行，报告效应量 + 区间 + p 值。确证集不参与任何调参回路——它是「只考一次的考场」。</li>
+  </ol>
+  <p><strong>样本单位 = 任务</strong>。重复 3 次用于压低任务内方差后取任务均值；分析在任务层面进行。评审 3 人评分先报告一致率（见 2.2），再聚合。任何「按重复次数凑样本量」的做法都被此定义排除。</p>
+
+  <h4 id="s2-2">2.2 检验方法与评审规则</h4>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:190px">问题</th><th>定稿规则</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">候选间比较（连续/等级分）</td><td>配对 Wilcoxon 符号秩检验，作用于<strong>同一任务上的成对差值</strong>；同时报告配对差值的中位数与 bootstrap 95% 区间</td></tr>
+      <tr><td class="hd">硬门通过率（二元）</td><td>McNemar 配对检验（同任务对同候选的通过/未通过配对）</td></tr>
+      <tr><td class="hd">多重比较</td><td>预注册<strong>唯一主比较</strong>（冠军 vs 基线）；其余比较全部标记为探索性，若需同时下结论按 Holm 逐步校正</td></tr>
+      <tr><td class="hd">「无差异」结论的语言纪律</td><td>只能说「在 α 下未检出差异」；要宣称「等效」必须用预注册边界的 TOST 等效检验——两者禁止混用</td></tr>
+      <tr><td class="hd">评审一致率</td><td>Krippendorff α（等级数据）；α &lt; 0.67 → 中止评测、先校准 rubric；争议任务由 2/3 多数裁决并留痕，争议率进报告</td></tr>
+      <tr><td class="hd">小样本声明</td><td>确证集 n=20 检验功效有限，P0a 结论定位为「门槛判定」，不得外推为「系统有效性证明」（沿用 v0.2 的冒烟定位并写死）</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="s3">
+  <h2><span class="num">三</span> / S0-3 Closure</h2>
+  <h3>protect_registry 权限模型：两态三权一周期</h3>
+
+  <p>复审的担忧成立：如果生成器能把任意约束自我标记为 safety，保护机制就变成纠错免疫。定稿模型：</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:130px">要素</th><th>规则</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">两态</td><td><code>proposed</code>（建议保护，由生成器/消融/校验器均可创建）→ <code>enacted</code>（已批准保护，<strong>删除豁免仅对 enacted 生效</strong>）。proposed 项走正常消融-删除流程，只是复核优先级提高。</td></tr>
+      <tr><td class="hd">三权</td><td><b>提议权</b>：系统组件皆可；<b>批准权</b>：仅用户或管理员角色（生成器、消融器、裁判一律无批准权，无例外）；<b>解除权</b>：批准人本人或管理员，解除必须写理由并留痕。</td></tr>
+      <tr><td class="hd">一周期</td><td>enacted 项带 <code>review_by</code>（默认 90 天）。到期进入「复核到期」态：保护继续生效但审计告警，超期未复核计入治理报告。</td></tr>
+      <tr><td class="hd">防滥用</td><td>登记必须附理由与证据引用；审计抽检增加「保护滥用率」指标（被 enact 后从未复核、且消融显示零增益的项占比），超阈值触发全量保护项复核。</td></tr>
+      <tr><td class="hd">与 §1 的接口</td><td>protect_registry 不在普通 loc 根内（<code>E_ROOT_FORBIDDEN</code>）；其变更走独立的 ProtectionChange 记录，与 Patch 流水分离。</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="s4">
+  <h2><span class="num">四</span> / S0-4 Closure</h2>
+  <h3>复现层级：把「可精确复现」换成三级诚实声明</h3>
+
+  <p>复审指出多数供应商只给别名、不给严格快照——v0.2 的「任何一次评测可精确复现」超出能力，撤回。替换为三级体系，每级绑定<strong>捕获清单、允许的声明、失效策略</strong>：</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:70px">层级</th><th style="width:190px">适用条件</th><th>允许的声明</th><th>失效策略</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="hd">T1 钉死</td>
+        <td>自托管 / 权重快照可固定</td>
+        <td>「可复现」——重放结果逐字节一致</td>
+        <td>缓存长期有效；仅随渲染器/模板版本升级失效</td>
+      </tr>
+      <tr>
+        <td class="hd">T2 别名+指纹</td>
+        <td>供应商给出版本别名，可取指纹</td>
+        <td>「条件复现：供应商版本未变时」</td>
+        <td>周期漂移巡检（每周 3 任务探针集重跑）；指纹变化 → 该模型全部缓存 EvalRun 与相关结论级联失效并标记</td>
+      </tr>
+      <tr>
+        <td class="hd">T3 仅别名</td>
+        <td>只有模型名，无版本信息</td>
+        <td>「最佳努力复现，结论具时效性」</td>
+        <td>结论 14 天有效期；任何晋升/门禁决策前必须重验；探针集同 T2</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p><strong>捕获清单</strong>（EvalRun 必填，缓存键的组成部分）：模型别名与可获得的最细版本标识、探针响应指纹（对 N 条标准化探针请求的响应哈希）、完整解码参数（temperature、top_p、top_k、stop、seed、max_tokens、惩罚项）、<code>renderer_version</code>、<code>template_version</code>、基准集版本、供应商请求/响应 ID。缓存键在 v0.2 四元组基础上扩为：<code>ir_checksum + 模型标识 + 指纹 + renderer_version + template_version + decode</code>。</p>
+
+  <div class="key">
+    <b>声明门禁联动：</b>§0.2 冻结的「评测可复现」声明，解冻后的合法形式是——<b>只有 T1 结论可称「可复现」，T2/T3 按上表口径</b>。对外报告一律附层级标签，供应商静默升级造成的漂移由巡检兜底而非口头承诺兜底。
+  </div>
+</section>
+
+<section id="s5">
+  <h2><span class="num">五</span> / P1 Package</h2>
+  <h3>P1 四项：意图新鲜度、在线参数、信任边界、预算</h3>
+
+  <h4 id="s5-1">5.1 意图新鲜度：四元组校验取代二元校验</h4>
+  <p>复审找到的洞是真实的：用户口头纠正目标、补充材料、改完成标准，但 IR 尚未重生成时，旧补丁仍能通过 checksum 校验。定稿方案——在途补丁携带四元组，应用前逐一核对：</p>
+  <pre><code>inflight_patch.carries = {
+  session_epoch,      # 会话代次（任务切换/手动编辑/补丁应用 → +1）
+  base_checksum,      # IR 基线 CAS
+  intent_hash,        # hash(意图框架最新版)：目标/完成标准/约束的语义摘要
+  context_hash        # hash(最近 3 轮对话 + 输入材料内容哈希)
+}
+# 任一新对话轮到达 → context_hash 变化 → 该任务名下全部在途补丁作废
+# 作废 ≠ 重放：基于新上下文重新触发生成，旧补丁仅留作负样本</code></pre>
+  <p>输入材料（上传文件、引用）单独维护内容哈希作为 <code>input_version</code>；文件被替换即使同名也触发失效。</p>
+
+  <h4 id="s5-2">5.2 在线模式参数表（v1 全量）</h4>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:170px">参数</th><th>定稿值 / 定义</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">归因窗口 k</td><td>3 个可评估轮（有明确输出的轮才计入分母）</td></tr>
+      <tr><td class="hd">失败判定 m</td><td>窗口内<strong>连续 2 次</strong>命中同一失败签名才判补丁无效并回滚（滞回：两次之间任何一次成功即清零计数）</td></tr>
+      <tr><td class="hd">失败签名</td><td><code>(失败类, loc 提示桶, 现象聚类 ID)</code>；现象聚类 = 失败现象文本的嵌入分桶；签名相同 = 三元组完全一致</td></tr>
+      <tr><td class="hd">误伤率分母</td><td><strong>已应用补丁数</strong>（非建议数）；观察窗 = 应用后 2 周；误伤 = 应用后 EvalRun 显著下降 + 人工确认非噪声</td></tr>
+      <tr><td class="hd">零建议期</td><td>指标报 <code>N/A</code>，禁止报 0（防零分母美化）；连续 N/A 超过 2 个观察窗 → 触发信号规则回顾</td></tr>
+      <tr><td class="hd">两率分离</td><td>「建议采纳率」= 确认应用 / 建议；「采纳后改善率」= 窗口内 EvalRun 改善或用户明确确认改善 / 已应用。两率独立报告，禁止合并为「有效率」</td></tr>
+      <tr><td class="hd">参数变更权限</td><td>k、m 属评测与运营规范管理项，改动需预注册新口径并重跑回归，不得在线热调</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4 id="s5-3">5.3 信任边界扩充：补齐四类被遗漏的输入源</h4>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:190px">输入源</th><th>数据面（进入生成/评估链路时）</th><th>修改面（被变更时）</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">模型卡</td><td>过注入检测 + 不可信包裹后进入上下文</td><td>双人审批 + 渲染回归集全过 + 变更留痕</td></tr>
+      <tr><td class="hd">渲染模板</td><td>同上</td><td>同上（模板污染影响所有后续渲染，属高影响变更）</td></tr>
+      <tr><td class="hd">评测用例 / 金标</td><td>用例文本按不可信数据存储</td><td>基准版本化，任何修改 = 新版本号，旧结论锁定旧版本</td></tr>
+      <tr><td class="hd">人工操作备注</td><td>按不可信输入处理（操作者账号可被劫持）</td><td>审计日志只增不改</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>存储型注入测试集覆盖范围由此定为<strong>全部 10 类输入源</strong>（v0.2 的 6 类 + 本节 4 类），每类至少 3 条用例，进入 P0b 回归集。租户隔离与审计日志补权限测试：越权读取、跨租户检索、日志篡改三类用例进 P1 出口判据。</p>
+
+  <h4 id="s5-4">5.4 资源预算表（结构定稿，绝对值待 D2 实测填入）</h4>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:190px">预算项</th><th>口径与估算</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">单任务 API 预算</td><td>token 上限（按生成/裁判/执行三角色分别设）、时延上限、重试预算（各 ≤1 次）、失败即降级（§5.3 v0.2 路径）</td></tr>
+      <tr><td class="hd">金标建设人时</td><td>30 任务 × 3 评审 × 10–20 分钟 = <strong>15–30 人时</strong>；含培训、争议裁决（2/3 机制）与首次维护，总估 <strong>25–45 人时</strong>。负责人栏待填</td></tr>
+      <tr><td class="hd">持续抽检人时</td><td>裁决抽检 5% + 标签抽检 3% 折算为每周/每批次人时，列入运营预算而非一次性成本</td></tr>
+      <tr><td class="hd">预算不足降级</td><td>金标降至 8 校准 + 12 确证（n=12），报告须显式注明检验功效进一步下降；低于此规模不开工 P0a 验收</td></tr>
+      <tr><td class="hd">P0a/P0b 总预算</td><td>=（任务数 × 单任务预算）+ 金标人时 + 抽检人时 + 10% 波动余量；D2 选型实测后 48 小时内填数并冻结</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="s6">
+  <h2><span class="num">六</span> / S2 Decisions</h2>
+  <h3>四项延后事项：三项本版裁定，一项保留触发式</h3>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:190px">事项</th><th>裁定</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="hd">组合消融成本</td>
+        <td>P2 落地，规则本版先定：仅对筛查得分 top-K（K=5）做组合消融，对数 ≤ K(K−1)/2 = 10；每对重复 3 次；单次消融会话设调用封顶（默认 60），超限即终止并输出「证据不足」而非硬跑。</td>
+      </tr>
+      <tr>
+        <td class="hd">DPO 训练目标</td>
+        <td><strong>裁定唯一主目标 = Patch 序列预测</strong>：输入（对话上下文、意图框架、基线 IR、缺陷证据），输出（v2 契约的 op 序列）；辅助目标 = 种子→IR 结构化抽取（仅用于 SFT 冷启动）。整 IR 自由文本生成不作为训练目标，防止目标混杂。P2 数据卡按此格式锁定。</td>
+      </tr>
+      <tr>
+        <td class="hd">删除传播边界</td>
+        <td>「可撤销」仅覆盖：原始记录、策略卡、示例、缓存、未进入训练的数据批次。<strong>已训权重不承诺撤销</strong>——只能回滚 checkpoint、切影子版本或重训；强制维护 checkpoint↔数据批次血缘映射，投毒批次暴露时按映射定位需回滚的权重版本。v0.2 §9.2 相关表述按此收紧。</td>
+      </tr>
+      <tr>
+        <td class="hd">同族裁判校准</td>
+        <td>保留为触发式任务：仅当 D2 实测被迫同族时启动——建 50 对人工标定集、测量偏好方向与强度（长度偏好/同族偏好）、在裁决聚合中加校正项、季度复标一次；P2 质量门增加「标定报告」。</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="s7">
+  <h2><span class="num">七</span> / Roadmap v3</h2>
+  <h3>阶段门禁 v3：S0 审计成为第一个硬门</h3>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:150px">阶段</th><th>内容</th><th>出口判据（可执行）</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="hd">P0-前置（并行双轨）</td>
+        <td><b>轨 A（规范）</b>：三份规范转写——IR/Patch（含 §1 文法、测试向量、错误码、非法用例集）、评测与基准（含 §2 统计骨架、校准/确证切分）、安全与租户（含 §5.3 十类输入源）；<b>轨 B（数据与选型）</b>：30 任务金标建设、D2 模型选型实测、预算填数</td>
+        <td>S0 审计：§1/§4 用例集与测试向量全绿 + 三份规范评审签字 → <strong>解冻 §0.2 的两条声明</strong>；金标完成与预算冻结为 P0a 开工前置</td>
+      </tr>
+      <tr>
+        <td class="hd">P0a 从零生成</td>
+        <td>M1 + M4 + L1/L2 + IR v3 + 应用器 + 单模型卡渲染</td>
+        <td>校准 10 → 预注册 → 确证 20 单次运行：主比较（Wilcoxon，α=0.05）过预注册阈值 + 硬门全过 + 评审 α ≥ 0.67；结论标注「门槛判定」</td>
+      </tr>
+      <tr>
+        <td class="hd">P0b 迭代</td>
+        <td>种子反解 + Patch 链 + 台账 + 回归保护 + 保护类权限</td>
+        <td>20 种子场景零未解释回归（McNemar，ε 预注册）；十类注入用例全过；保护滥用率纳入审计报告</td>
+      </tr>
+      <tr>
+        <td class="hd">P1 在线改进</td>
+        <td>§5.1 四元组校验 + §5.2 参数表 + 事务机制</td>
+        <td>并发/切换/重投/乱序 + 意图漂移（IR 未变但 intent_hash 变）五类竞态用例全过；误回滚 = 0；两率分报且采纳后改善率 ≥ 预注册阈值</td>
+      </tr>
+      <tr>
+        <td class="hd">P2 及以后</td>
+        <td>策略学习 → 元进化 →（可选）权重蒸馏</td>
+        <td>门槛驱动不变（v0.2 §8.3 三条件）；P2 增补：数据卡按 §6 DPO 目标格式、消融封顶生效、金标轮换机制（防长期适应性过拟合）</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="key">
+    <b>本版净效果：</b>复审的 4 个 S0 阻塞项全部从「待办」变为「已决」——loc 文法与错误码体系（§1）、校准/确证切分与配对检验（§2）、两态三权一周期（§3）、T1/T2/T3 声明阶梯（§4）；P1 的四个缺口以四元组校验、参数表、十类输入源、预算表结构关闭（§5）；S2 三项本版裁定、一项保留触发（§6）。三份规范的转写清单由此完整：它们不再需要做任何设计决策，只需要把本版条款变成可执行的 Schema、用例与代码。
+  </div>
+
+  <p><strong>下一步（建议顺序）</strong>：① 交付三份规范文件（JSON Schema + 测试向量 + 用例集 + 评审文档）；② 同步启动轨 B（金标建设与 D2 实测——不依赖规范，复审已确认可并行）；③ S0 审计通过后解冻两条声明并开工 P0a 编码。需要我现在开始产出规范文件的话，从 IR/Patch 规范做起——它是三份中唯一被两条冻结声明共同依赖的一份。</p>
+</section>
+
+<footer>
+  <p style="font-size:12px;color:#a8b0bc;">v0.3 · S0 关闭版 · 2026-10-24 · 响应第二轮外部复审（12 项：4×S0 + 4×P1 + 4×S2，全部接受；其中 S0-1/S0-2/S0-3/S0-4 与 S2-10 在本版直接定稿）。v0.1 / v0.2 均保留未动。主要撤回项：v0.2 的「任何一次评测可精确复现」与「CI 重叠即无显著差异」。</p>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

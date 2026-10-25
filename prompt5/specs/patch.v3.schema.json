@@ -1,0 +1,152 @@
+{
+  "$defs": {
+    "BaseRef": {
+      "additionalProperties": false,
+      "properties": {
+        "ir_id": {
+          "title": "Ir Id",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "integer"
+        },
+        "checksum": {
+          "title": "Checksum",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ir_id",
+        "version",
+        "checksum"
+      ],
+      "title": "BaseRef",
+      "type": "object"
+    },
+    "Op": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "enum": [
+            "ADD",
+            "DELETE",
+            "REWRITE",
+            "MOVE"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "loc": {
+          "title": "Loc",
+          "type": "string"
+        },
+        "content": {
+          "default": null,
+          "title": "Content"
+        },
+        "reason": {
+          "default": "",
+          "title": "Reason",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "to": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To"
+        }
+      },
+      "required": [
+        "op",
+        "loc"
+      ],
+      "title": "Op",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "3",
+      "default": "3",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "patch_id": {
+      "title": "Patch Id",
+      "type": "string"
+    },
+    "base": {
+      "$ref": "#/$defs/BaseRef"
+    },
+    "model_scope": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model Scope"
+    },
+    "intent": {
+      "enum": [
+        "improve",
+        "simplify",
+        "fix",
+        "protect"
+      ],
+      "title": "Intent",
+      "type": "string"
+    },
+    "ops": {
+      "items": {
+        "$ref": "#/$defs/Op"
+      },
+      "minItems": 1,
+      "title": "Ops",
+      "type": "array"
+    },
+    "idempotency_key": {
+      "minLength": 1,
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "created": {
+      "additionalProperties": true,
+      "title": "Created",
+      "type": "object"
+    },
+    "patch_hash": {
+      "default": "",
+      "title": "Patch Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "patch_id",
+    "base",
+    "intent",
+    "ops",
+    "idempotency_key"
+  ],
+  "title": "Patch",
+  "type": "object"
+}

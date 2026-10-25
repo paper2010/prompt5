@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自适应提示词生成器 · 系统设计方案 v0.1</title>
+<style>
+  :root{
+    --ink:#171a20;
+    --ink-2:#333a45;
+    --muted:#67707e;
+    --faint:#8b95a3;
+    --line:#e4e7ec;
+    --line-2:#eef0f4;
+    --bg:#ffffff;
+    --soft:#f7f8fa;
+    --soft-2:#f1f4f9;
+    --accent:#2b54c4;
+    --accent-soft:#eaeffc;
+    --teal:#0d7268;
+    --teal-soft:#e6f4f1;
+    --amber:#a55a08;
+    --amber-soft:#fdf3e3;
+    --rose:#a8323a;
+    --rose-soft:#fbeceb;
+    --violet:#6d3fb8;
+    --violet-soft:#f1ecfb;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Inter","Segoe UI",system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    font-size:16px;line-height:1.78;letter-spacing:.01em;-webkit-font-smoothing:antialiased;
+  }
+  .wrap{display:grid;grid-template-columns:212px minmax(0,1fr);gap:56px;max-width:1160px;margin:0 auto;padding:0 40px 120px;}
+  .toc{position:sticky;top:0;align-self:start;max-height:100vh;overflow:auto;padding:52px 0 40px;font-size:13px;line-height:1.6;}
+  .toc-title{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:14px;font-weight:600;}
+  .toc a{display:block;color:var(--muted);text-decoration:none;padding:5px 0 5px 12px;border-left:2px solid var(--line-2);transition:.15s;}
+  .toc a:hover{color:var(--accent);border-left-color:var(--accent);}
+  .toc a.lv1{font-weight:600;color:var(--ink-2);margin-top:10px;}
+  .toc a.lv2{padding-left:24px;font-size:12.5px;}
+  header{padding:64px 0 0;}
+  .kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:18px;}
+  h1{font-size:38px;line-height:1.25;letter-spacing:-.02em;font-weight:750;margin:0 0 18px;color:#0e1116;}
+  .sub{font-size:17px;color:var(--muted);line-height:1.75;margin:0 0 26px;max-width:46em;}
+  .meta{display:flex;flex-wrap:wrap;gap:10px;font-size:12.5px;color:var(--faint);padding-bottom:26px;border-bottom:1px solid var(--line);}
+  .meta span{padding:3px 10px;background:var(--soft);border-radius:999px;}
+  section{padding-top:54px;}
+  h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);font-weight:700;margin:0 0 8px;}
+  h3{font-size:26px;line-height:1.35;font-weight:700;letter-spacing:-.01em;margin:0 0 22px;color:#0e1116;padding-bottom:16px;border-bottom:1px solid var(--line);}
+  h4{font-size:18.5px;line-height:1.5;font-weight:700;margin:38px 0 12px;color:#12161d;}
+  h5{font-size:15px;font-weight:700;margin:22px 0 8px;color:var(--ink-2);}
+  p{margin:0 0 15px;}
+  strong{font-weight:650;color:#0f1319;}
+  em{font-style:normal;background:linear-gradient(transparent 62%,#fdf0c8 62%);padding:0 1px;}
+  a{color:var(--accent);}
+  code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:.875em;background:var(--soft-2);padding:1.5px 5px;border-radius:4px;color:#243046;}
+  pre{background:#0f1420;color:#dbe2ee;border-radius:var(--radius);padding:18px 20px;overflow-x:auto;font-size:13px;line-height:1.65;margin:18px 0;}
+  pre code{background:none;padding:0;color:inherit;font-size:inherit;}
+  .lead{font-size:17px;line-height:1.8;color:var(--ink-2);border-left:2px solid var(--accent);padding-left:20px;margin:0 0 24px;}
+  .note{background:var(--soft);border:1px solid var(--line);border-radius:var(--radius);padding:18px 22px;font-size:14.5px;line-height:1.72;color:var(--ink-2);margin:22px 0;}
+  .note .tag{display:inline-block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--faint);margin-bottom:6px;}
+  .key{background:var(--accent-soft);border:1px solid #d3ddf8;border-left:3px solid var(--accent);border-radius:6px;padding:16px 20px;margin:22px 0;font-size:15px;line-height:1.72;color:#1c2a4a;}
+  .key b{color:var(--accent);}
+  .key.violet{background:var(--violet-soft);border-color:#dccff6;border-left-color:var(--violet);}
+  .key.violet b{color:var(--violet);}
+  figure{margin:30px 0;padding:0;}
+  figure svg{display:block;width:100%;height:auto;background:var(--soft);border:1px solid var(--line);border-radius:var(--radius);}
+  figcaption{font-size:12.5px;color:var(--faint);margin-top:9px;line-height:1.6;text-align:center;}
+  .scroll{overflow-x:auto;margin:24px 0;border:1px solid var(--line);border-radius:var(--radius);}
+  table{border-collapse:collapse;width:100%;font-size:13.6px;line-height:1.6;min-width:640px;}
+  th{background:#f4f6f9;text-align:left;font-weight:700;color:var(--ink-2);padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap;font-size:12.8px;}
+  td{padding:10px 14px;border-bottom:1px solid var(--line-2);vertical-align:top;color:var(--ink-2);}
+  tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:#fafbfc;}
+  td.hd{font-weight:650;color:var(--ink);background:#fcfcfd;white-space:nowrap;}
+  ul,ol{margin:0 0 16px;padding-left:1.35em;}
+  li{margin:0 0 7px;}
+  li::marker{color:var(--faint);}
+  .tight li{margin-bottom:4px;}
+  .mod{border:1px solid var(--line);border-radius:var(--radius);margin:26px 0;overflow:hidden;}
+  .mod-hd{background:var(--soft);padding:13px 20px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;}
+  .mod-hd .id{font-family:"SFMono-Regular",Consolas,monospace;font-size:13px;font-weight:700;color:var(--accent);}
+  .mod-hd .nm{font-size:16px;font-weight:700;color:#101620;}
+  .mod-hd .one{font-size:13px;color:var(--faint);}
+  .mod-bd{padding:16px 20px 18px;}
+  .mod-bd p:last-child{margin-bottom:0;}
+  .kv{display:grid;grid-template-columns:88px minmax(0,1fr);gap:2px 14px;font-size:14.2px;margin:0 0 12px;}
+  .kv dt{color:var(--faint);font-size:12.5px;font-weight:600;padding-top:2px;}
+  .kv dd{margin:0;color:var(--ink-2);line-height:1.7;}
+  .steps{counter-reset:s;list-style:none;padding:0;margin:18px 0;}
+  .steps li{counter-increment:s;position:relative;padding-left:38px;margin-bottom:13px;}
+  .steps li::before{content:counter(s);position:absolute;left:0;top:1px;width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:"SFMono-Regular",Consolas,monospace;}
+  .steps b{display:block;margin-bottom:2px;}
+  .flow{border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:20px 24px;margin:26px 0;}
+  .flow h5{margin:0 0 4px;font-size:16.5px;color:#101620;}
+  .flow .cond{font-size:12.5px;color:var(--faint);margin:0 0 14px;}
+  .flow .cond b{color:var(--muted);}
+  .chip{display:inline-block;font-size:11.5px;padding:2px 9px;border-radius:999px;font-weight:600;margin-right:6px;}
+  .c-a{background:var(--teal-soft);color:var(--teal);}
+  .c-b{background:var(--accent-soft);color:var(--accent);}
+  .c-c{background:var(--amber-soft);color:var(--amber);}
+  .c-d{background:var(--rose-soft);color:var(--rose);}
+  .c-v{background:var(--violet-soft);color:var(--violet);}
+  footer{margin-top:70px;padding-top:28px;border-top:1px solid var(--line);font-size:13px;color:var(--faint);line-height:1.8;}
+  @media (max-width:980px){
+    .wrap{grid-template-columns:1fr;gap:0;padding:0 24px 80px;}
+    .toc{display:none;}
+    h1{font-size:29px;}
+    h3{font-size:21px;}
+    header{padding-top:40px;}
+  }
+  @media print{
+    .toc{display:none;}
+    .wrap{display:block;max-width:none;padding:0;}
+    section,figure{page-break-inside:avoid;}
+    body{font-size:11pt;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav class="toc">
+  <div class="toc-title">目录</div>
+  <a href="#s0" class="lv1">方案概述</a>
+  <a href="#s1" class="lv1">一 · 设计立场</a>
+  <a href="#s2" class="lv1">二 · 总体架构</a>
+  <a href="#s3" class="lv1">三 · 模块职责详解</a>
+  <a href="#s3-1" class="lv2">M1 意图解析</a>
+  <a href="#s3-2" class="lv2">M2 资产库</a>
+  <a href="#s3-3" class="lv2">M3 模型适配</a>
+  <a href="#s3-4" class="lv2">M4 生成引擎</a>
+  <a href="#s3-5" class="lv2">M5 评估排序</a>
+  <a href="#s3-6" class="lv2">M6 动态改进</a>
+  <a href="#s3-7" class="lv2">M7 蒸馏自学习</a>
+  <a href="#s3-8" class="lv2">M8 编排治理</a>
+  <a href="#s4" class="lv1">四 · 数据模型</a>
+  <a href="#s5" class="lv1">五 · 关键流程</a>
+  <a href="#s5-a" class="lv2">流程 A 冷启动</a>
+  <a href="#s5-b" class="lv2">流程 B 迭代</a>
+  <a href="#s5-c" class="lv2">流程 C 会话内</a>
+  <a href="#s5-d" class="lv2">流程 D 自训练</a>
+  <a href="#s6" class="lv1">六 · 自学习闭环</a>
+  <a href="#s7" class="lv1">七 · 模型选型</a>
+  <a href="#s8" class="lv1">八 · 落地路线</a>
+  <a href="#s9" class="lv1">九 · 风险与待决策</a>
+</nav>
+
+<main>
+
+<header>
+  <div class="kicker">System Design · Discussion Draft</div>
+  <h1>自适应提示词生成器：系统设计方案</h1>
+  <p class="sub">一套可适配大多数 AI Agent 场景的提示词生成系统：以「结构化中间表示 + 生成-评估-选择循环 + 逐模型编译」为骨架，以「评估日志驱动的分层自学习」为飞轮。</p>
+  <div class="meta">
+    <span>v0.1 讨论稿</span>
+    <span>8 个功能模块</span>
+    <span>4 条关键流程</span>
+    <span>4 层自学习闭环</span>
+    <span>2026-10-24</span>
+  </div>
+</header>
+
+<section id="s0">
+  <h3>方案概述：一句话说清这套系统</h3>
+  <p class="lead">系统的核心对象不是「提示词文本」，而是一份<strong>结构化的提示词中间表示（Prompt IR）</strong>。文本只是 IR 在某个目标模型上的「渲染结果」。所有生成、改进、评估、学习都发生在 IR 层面，只在最后一步才编译成面向目标模型风格的成品。</p>
+  <p>为什么这个决定最重要？因为你提的五条需求，恰好分别卡在五个不同的工程难点上，而 IR-first 是同时解开它们的同一把钥匙：</p>
+  <ul class="tight">
+    <li><strong>「迭代 vs 从零」</strong>——需要把现有提示词「读懂再改」而不是「重写一遍」→ IR 提供可 diff、可追溯的结构；</li>
+    <li><strong>「补遗漏、删冗余、删未提及」</strong>——需要知道改了哪一条、删了哪一句 → IR 里的指令是带 ID 与出处的原子单元，才能做逐条归因和消融；</li>
+    <li><strong>「适配不同大模型的风格」</strong>——同一份意图在不同模型上要长成不同样子 → IR 与渲染分离，一份 IR 编译出 N 份模型特化文本；</li>
+    <li><strong>「沉淀更优的生成方式」</strong>——学习的对象是「怎么生成」而不是「生成了什么」→ 沉淀物（策略卡、示例对、偏好数据）全部挂在 IR 的编辑操作上，可统计、可复放；</li>
+    <li><strong>「持续同步优化」</strong>——优化不能靠一次性人工调参 → 把「评估-排序」的日常日志直接变成自训练的数据源。</li>
+  </ul>
+  <p>整份方案可以压缩成一张图：上半部分是<strong>运行时链路</strong>（三条入口路径，共用一套生成-评估-选择引擎），下半部分是<strong>离线飞轮</strong>（把运行时产生的证据蒸馏成生成能力的升级）。</p>
+</section>
+
+<section id="s1">
+  <h2><span class="num">一</span> / Principles</h2>
+  <h3>设计立场：三条从上一轮分析直接继承的铁律</h3>
+  <p>上一轮对 WorkBuddy 与七个开源项目的拆解，结论里有三条对本设计具有约束力，先立在这里，后面所有模块设计都不与之冲突。</p>
+
+  <div class="key">
+    <b>铁律一：提示词没有普适最优解，只有针对特定模型的最优解。</b>（DSPy 的实证结论：同一程序在不同模型上被优化成不同提示词。）所以本系统从不追求「一段万能好提示词」，每个候选都必须绑定目标模型评测；换模型 = 重新编译 + 重新评测。
+  </div>
+  <div class="key">
+    <b>铁律二：评估信号的上限就是优化效果的上限。</b>（优化器会精准地优化你给的指标，包括你写错的部分。）所以评估模块 M5 是全系统的「心脏」而非附件，评分依据必须从用户意图自动生成（锚定式 rubric），不允许拍脑袋打分。
+  </div>
+  <div class="key">
+    <b>铁律三：相对优于绝对，结构优于措辞。</b>（成对比较比绝对打分稳；声明式结构比自然语言祈使句可靠。）所以排序一律用交换顺序的成对裁决；一切可以结构化的约束（格式、schema、禁令清单）都收进 IR 的结构字段，而不是写成散文。
+  </div>
+</section>
+
+<section id="s2">
+  <h2><span class="num">二</span> / Architecture</h2>
+  <h3>总体架构：四层八模块</h3>
+
+  <figure>
+    <svg viewBox="0 0 680 472" role="img" aria-label="系统总体架构">
+      <defs>
+        <marker id="fa" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" fill="#9aa4b2"/>
+        </marker>
+        <marker id="fb" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" fill="#8a7fd0"/>
+        </marker>
+      </defs>
+
+      <!-- Layer 0: entry -->
+      <rect x="120" y="14" width="440" height="58" rx="8" fill="#ffffff" stroke="#d8dde5"/>
+      <text x="340" y="38" text-anchor="middle" font-size="13" font-weight="700" fill="#171a20">入口路由（M8 编排）</text>
+      <text x="340" y="57" text-anchor="middle" font-size="10.5" fill="#67707e">从零搭建 ｜ 基于既有提示词迭代 ｜ 会话内旁路观察</text>
+
+      <!-- Layer 1: core engine -->
+      <rect x="14" y="96" width="652" height="118" rx="10" fill="#eaeffc" stroke="#c3d1f2"/>
+      <text x="30" y="118" font-size="11" font-weight="700" fill="#2b54c4" letter-spacing="1">核心引擎层（运行时）</text>
+      <rect x="30" y="130" width="148" height="66" rx="6" fill="#ffffff" stroke="#c3d1f2"/>
+      <text x="104" y="155" text-anchor="middle" font-size="12.5" font-weight="700" fill="#101620">M1 意图解析</text>
+      <text x="104" y="173" text-anchor="middle" font-size="10" fill="#67707e">槽位抽取 · 澄清提问</text>
+      <rect x="194" y="130" width="148" height="66" rx="6" fill="#ffffff" stroke="#c3d1f2"/>
+      <text x="268" y="155" text-anchor="middle" font-size="12.5" font-weight="700" fill="#101620">M4 生成引擎</text>
+      <text x="268" y="173" text-anchor="middle" font-size="10" fill="#67707e">多策略候选 · 编辑补丁</text>
+      <rect x="358" y="130" width="148" height="66" rx="6" fill="#ffffff" stroke="#c3d1f2"/>
+      <text x="432" y="155" text-anchor="middle" font-size="12.5" font-weight="700" fill="#101620">M5 评估排序</text>
+      <text x="432" y="173" text-anchor="middle" font-size="10" fill="#67707e">三级信号 · 成对裁决</text>
+      <rect x="522" y="130" width="128" height="66" rx="6" fill="#ffffff" stroke="#c3d1f2"/>
+      <text x="586" y="155" text-anchor="middle" font-size="12.5" font-weight="700" fill="#101620">M6 动态改进</text>
+      <text x="586" y="173" text-anchor="middle" font-size="10" fill="#67707e">信号监测 · 补丁建议</text>
+
+      <!-- Layer 2: knowledge -->
+      <rect x="14" y="238" width="652" height="108" rx="10" fill="#e6f4f1" stroke="#b6ddd6"/>
+      <text x="30" y="260" font-size="11" font-weight="700" fill="#0d7268" letter-spacing="1">知识与资产层（可学习）</text>
+      <rect x="30" y="272" width="200" height="60" rx="6" fill="#ffffff" stroke="#b6ddd6"/>
+      <text x="130" y="296" text-anchor="middle" font-size="12.5" font-weight="700" fill="#101620">M2 提示词资产库</text>
+      <text x="130" y="314" text-anchor="middle" font-size="10" fill="#67707e">IR 版本树 · 检索 · 语义化版本</text>
+      <rect x="246" y="272" width="200" height="60" rx="6" fill="#ffffff" stroke="#b6ddd6"/>
+      <text x="346" y="296" text-anchor="middle" font-size="12.5" font-weight="700" fill="#101620">M3 模型适配层</text>
+      <text x="346" y="314" text-anchor="middle" font-size="10" fill="#67707e">模型卡 · IR→文本渲染器</text>
+      <rect x="462" y="272" width="188" height="60" rx="6" fill="#ffffff" stroke="#b6ddd6"/>
+      <text x="556" y="296" text-anchor="middle" font-size="12.5" font-weight="700" fill="#101620">M7 蒸馏与自学习</text>
+      <text x="556" y="314" text-anchor="middle" font-size="10" fill="#67707e">策略沉淀 · 偏好数据 · 自训练</text>
+
+      <!-- Layer 3: governance -->
+      <rect x="14" y="370" width="652" height="82" rx="10" fill="#fdf3e3" stroke="#f0dcb8"/>
+      <text x="30" y="392" font-size="11" font-weight="700" fill="#a55a08" letter-spacing="1">治理层（贯穿所有层）</text>
+      <rect x="30" y="402" width="148" height="38" rx="6" fill="#ffffff" stroke="#f0dcb8"/>
+      <text x="104" y="425" text-anchor="middle" font-size="11.5" font-weight="700" fill="#101620">M8 编排与预算</text>
+      <rect x="194" y="402" width="148" height="38" rx="6" fill="#ffffff" stroke="#f0dcb8"/>
+      <text x="268" y="425" text-anchor="middle" font-size="11.5" font-weight="700" fill="#101620">安全与注入防护</text>
+      <rect x="358" y="402" width="148" height="38" rx="6" fill="#ffffff" stroke="#f0dcb8"/>
+      <text x="432" y="425" text-anchor="middle" font-size="11.5" font-weight="700" fill="#101620">血缘与审计</text>
+      <rect x="522" y="402" width="128" height="38" rx="6" fill="#ffffff" stroke="#f0dcb8"/>
+      <text x="586" y="425" text-anchor="middle" font-size="11.5" font-weight="700" fill="#101620">人工审核门</text>
+
+      <!-- arrows: entry -> engine -->
+      <line x1="200" y1="72" x2="140" y2="126" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#fa)"/>
+      <line x1="340" y1="72" x2="290" y2="126" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#fa)"/>
+      <line x1="480" y1="72" x2="560" y2="126" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#fa)"/>
+      <!-- engine internal flow -->
+      <line x1="178" y1="163" x2="190" y2="163" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#fa)"/>
+      <line x1="342" y1="163" x2="354" y2="163" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#fa)"/>
+      <!-- engine <-> knowledge -->
+      <line x1="104" y1="200" x2="120" y2="268" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#fa)"/>
+      <line x1="268" y1="200" x2="270" y2="268" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#fa)"/>
+      <line x1="432" y1="200" x2="420" y2="268" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#fa)"/>
+      <line x1="586" y1="200" x2="556" y2="268" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#fa)"/>
+      <!-- feedback: M7 -> M4 (learning) -->
+      <path d="M500,302 L268,302 L268,200" fill="none" stroke="#8a7fd0" stroke-width="1.6" marker-end="url(#fb)"/>
+      <text x="384" y="295" text-anchor="middle" font-size="10" font-weight="700" fill="#6d3fb8">策略卡 / 示例对 / 元提示词升级（离线飞轮）</text>
+      <!-- logs -->
+      <line x1="470" y1="332" x2="540" y2="214" stroke="#c9d0da" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#fa)"/>
+      <text x="486" y="238" font-size="9.5" fill="#8b95a3">评估日志 → 训练数据</text>
+    </svg>
+    <figcaption>图 1　四层八模块。实线是运行时数据流；紫色回流是离线学习飞轮（M7 把证据蒸馏成 M4 的生成策略升级）；虚线是评估日志沉淀为偏好数据的通道。</figcaption>
+  </figure>
+
+  <p>模块间只有一条主数据流：<strong>M1 理解 → M4 生成 → M5 评估 → （M6 监测）→ 交付</strong>，其余模块都是这条主干的服务者或观察者。这样设计的好处是每条流程（A/B/C/D）都只是对同一条主干的不同「进入方式」和「触发时机」，不存在为某个需求单独发明的旁路逻辑。</p>
+</section>
+
+<section id="s3">
+  <h2><span class="num">三</span> / Modules</h2>
+  <h3>模块职责详解</h3>
+
+  <div class="mod" id="s3-1">
+    <div class="mod-hd"><span class="id">M1</span><span class="nm">意图解析与槽位抽取</span><span class="one">把「人话」翻译成「结构」，是一切后续环节的地基</span></div>
+    <div class="mod-bd">
+      <dl class="kv">
+        <dt>职责</dt><dd>读取用户多轮提问与上下文（以及可选的既有提示词），抽取成一份带置信度的<strong>意图框架（Intent Frame）</strong>：任务类型、角色、目标与完成标准、输入材料、输出格式、约束与排除项、示例、目标模型。</dd>
+        <dt>输入</dt><dd>多轮对话流；既有提示词（迭代模式下的种子）；用户上传材料。</dd>
+        <dt>输出</dt><dd>Intent Frame（JSON，每个槽位附 <code>confidence</code> 与 <code>source_turn</code> 出处）；「缺失槽位清单」，按信息增益排序。</dd>
+        <dt>关键技术</dt><dd>结构化抽取（function calling / JSON Schema 约束输出）；槽位置信度估计；<strong>澄清提问选择器</strong>——只对「缺失且阻塞生成」的槽位发问，每轮最多 2–3 问，问完即走，避免把生成器做成审讯室。迭代模式下额外做<strong>种子反解</strong>：把既有提示词逆向解析成 IR，与对话意图做 diff。</dd>
+        <dt>边界</dt><dd>不做生成、不做评估；对用户文本一律按「数据」处理（见 M8 注入防护），抽取结果只进结构字段，不进指令区。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="mod" id="s3-2">
+    <div class="mod-hd"><span class="id">M2</span><span class="nm">提示词资产库与版本管理</span><span class="one">所有提示词以 IR 形式入库，文本只是其投影</span></div>
+    <div class="mod-bd">
+      <dl class="kv">
+        <dt>职责</dt><dd>存储、检索、版本化所有 IR。冷启动时提供同任务类型的骨架模板与成功示例；迭代时提供「父版本」与历史评测，用于回归保护。</dd>
+        <dt>数据组织</dt><dd>按「任务类型 × 目标模型」建索引；每条 IR 保留<strong>版本树</strong>（谁、用什么策略、基于什么证据改出来的）；语义化版本：补内容 = minor，删冗余 = patch，结构调整 = major。版本树是 M7 归因分析的原材料——没有它，「沉淀更优生成方式」无从谈起。</dd>
+        <dt>关键技术</dt><dd>向量检索（找相似任务的成功 IR 做参考）；指令级血缘标注（每条 <code>instruction</code> 记录来源：用户说的 / 种子里的 / 生成器加的）。</dd>
+        <dt>边界</dt><dd>不评分、不淘汰——晋升与降级由 M5+M7 决定，库只负责忠实记录。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="mod" id="s3-3">
+    <div class="mod-hd"><span class="id">M3</span><span class="nm">目标模型适配层</span><span class="one">一份 IR，N 种渲染；模型差异被隔离在这一层</span></div>
+    <div class="mod-bd">
+      <dl class="kv">
+        <dt>职责</dt><dd>维护每款目标大模型的<strong>模型卡</strong>，并把 IR 渲染成该模型偏好的表面形式。</dd>
+        <dt>模型卡内容</dt><dd>结构偏好（XML 标签 vs Markdown 层级 vs 纯文）、系统提示词惯例、指令位置敏感性（首尾 vs 中段）、否定式指令的遵循强度、输出格式约定、工具调用格式、上下文预算与 token 换算率（注意是 token 不是字）、已知的怪癖与禁忌。</dd>
+        <dt>关键技术</dt><dd>渲染器 = 模板 + 模型卡参数；同构校验（渲染前后 IR 语义等价性检查）；<strong>模型卡本身也是可学习资产</strong>——M7 发现某模型对某类指令衰减快，就回写进模型卡。模型卡格式建议直接采用「Skill + references」的组织方式（参考 WorkBuddy 的渐进式披露），生成时按需加载。</dd>
+        <dt>边界</dt><dd>只做「翻译」，不做「优化」——措辞优劣由 M5 判定；换模型必须重新评测，不允许「渲染完直接用」。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="mod" id="s3-4">
+    <div class="mod-hd"><span class="id">M4</span><span class="nm">生成引擎</span><span class="one">双模式输入、多策略出候选、补丁式输出</span></div>
+    <div class="mod-bd">
+      <dl class="kv">
+        <dt>职责</dt><dd>产出候选方案。两条路径：<strong>从零模式</strong>（Intent Frame + M2 检索的骨架 → 生成完整 IR）；<strong>迭代模式</strong>（种子 IR + 意图 diff → 生成编辑补丁）。</dd>
+        <dt>多策略候选</dt><dd>每次产出 N 个（默认 4）候选，刻意用不同生成策略拉开多样性：① 骨架模板填充（结构派）；② 模仿资产库最优同类 IR（范例派）；③ 自由撰写后回填 IR（自由派）；④ 极简约束派（只保留必需项）。策略 ID 写入候选元数据——M7 靠它统计「哪派在什么场景赢面大」。</dd>
+        <dt>补丁式输出</dt><dd>迭代模式不整篇重写，而是输出原子操作序列（见第四节）：<code>ADD</code> / <code>DELETE</code> / <code>REWRITE</code> / <code>REORDER</code>。这是「补充遗漏、删除冗余、删除未提及」的执行载体——每条改动独立可评审、可回滚、可归因。</dd>
+        <dt>关键技术</dt><dd>生成用的元提示词本身是一个带版本的 IR 资产（自举，详见 M7-L2）；few-shot 示例从 M2 检索而非写死；输出用结构化约束保证是合法 IR。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="mod" id="s3-5">
+    <div class="mod-hd"><span class="id">M5</span><span class="nm">评估与排序</span><span class="one">全系统的心脏：三级信号，逐级加码</span></div>
+    <div class="mod-bd">
+      <dl class="kv">
+        <dt>职责</dt><dd>给候选排序、给现有版本把关、给「删冗余」提供证据。三级信号，成本递增，逐级淘汰：</dd>
+      </dl>
+      <div class="scroll" style="margin:12px 0 14px">
+      <table style="min-width:560px">
+        <thead><tr><th style="width:110px">级别</th><th>手段</th><th>成本</th><th>拦什么</th></tr></thead>
+        <tbody>
+          <tr><td class="hd">L1 静态检查</td><td>规则引擎：槽位完整性、指令自相矛盾检测、token 预算、禁词与风险扫描、格式合法性</td><td>零调用</td><td>结构性硬伤</td></tr>
+          <tr><td class="hd">L2 成对裁决</td><td>LLM 裁判对候选两两比较；<strong>交换 A/B 顺序各裁一次，两次结论一致才计分</strong>；评分依据是 M1 的意图框架自动生成的可勾选 rubric，不允许裁判自由发挥</td><td>中</td><td>措辞与结构优劣</td></tr>
+          <tr><td class="hd">L3 执行验证</td><td>把候选真正投到目标模型上跑抽样用例，量任务指标；开放式任务用 Elo 锦标赛累积排名</td><td>高（可选）</td><td>「说得好≠跑得好」</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <dl class="kv">
+        <dt>关键设计</dt><dd>① rubric 从 <code>goal.done_criteria + constraints</code> 自动生成，保证「评的就是用户要的」；② 成对 + 交换顺序，压制裁判的位置偏差与长度偏好；③ 裁判模型尽量与生成器异族，规避同族自评偏好；④ 每一次裁决（谁赢谁输、为什么）都落日志——<strong>这份日志天然就是偏好学习数据</strong>，是 M7 自训练最便宜的燃料。</dd>
+        <dt>消融模式</dt><dd>冗余判定专用：逐条摘除指令 i，重跑 L2/L3，得分不变 ⇒ 冗余候选；得分下降 ⇒ 有效指令。为控制成本，只对「疑似冗余」（重复语义、低引用、用户从未触发）做消融，不做全量。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="mod" id="s3-6">
+    <div class="mod-hd"><span class="id">M6</span><span class="nm">会话内动态改进器</span><span class="one">旁路监听，异步出补丁，不阻塞对话</span></div>
+    <div class="mod-bd">
+      <dl class="kv">
+        <dt>职责</dt><dd>满足「多轮对话中读取提问与上下文、动态改进」：持续监测运行中的对话，识别改进信号，触发 M4 的补丁流程。</dd>
+        <dt>信号规则（v1 清单）</dt><dd>
+          <ul class="tight" style="margin:0">
+            <li><b>约束失效</b>：用户重复同一要求 ≥ 2 次 → 候选补丁：把该指令移位（首/尾）或升格为逐条检查清单；</li>
+            <li><b>目标偏移</b>：用户出现纠正语（「不对 / 我说的是 / 别」）→ 重新走 M1 抽取，diff 后出补丁；</li>
+            <li><b>材料更新</b>：用户上载新文件 / 新引用 → 更新 <code>inputs</code> 槽位；</li>
+            <li><b>预算越界</b>：输出连续超长 / 超格式 → 收紧 budget 约束；</li>
+            <li><b>上下文吃紧</b>：token 余量低于阈值 → 触发删冗余压缩 pass；</li>
+            <li><b>任务切换</b>：意图框架的任务类型变化 → 建议切换 IR 而非硬改。</li>
+          </ul>
+        </dd>
+        <dt>应用策略</dt><dd><strong>异步生成、静默评估、显式应用</strong>：补丁在后台生成并过 L1/L2，分数显著提升才提示用户「建议应用此改进」，用户确认或达到自动阈值后生效；不满足则攒到会话结束统一复盘。绝不在线上对话中同步阻塞。</dd>
+        <dt>边界</dt><dd>M6 只负责「发现信号 + 触发流程」，补丁的生成与评估仍然复用 M4/M5，避免第二套逻辑。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="mod" id="s3-7">
+    <div class="mod-hd"><span class="id">M7</span><span class="nm">蒸馏与自学习</span><span class="one">分四层渐进，先便宜后昂贵；每一层都以上一层为门槛</span></div>
+    <div class="mod-bd">
+      <dl class="kv">
+        <dt>职责</dt><dd>把运行时产生的证据（版本树、评测日志、消融结论、会话轨迹）蒸馏成生成能力的升级。四层递进，成本与风险同步上升：</dd>
+      </dl>
+      <div class="scroll" style="margin:12px 0 14px">
+      <table style="min-width:600px">
+        <thead><tr><th style="width:100px">层级</th><th>沉淀物</th><th>更新什么</th><th>触发</th><th>风险</th></tr></thead>
+        <tbody>
+          <tr><td class="hd">L0 经验记忆</td><td>会话级反思笔记：本任务×本模型什么有效</td><td>生成时的上下文参考</td><td>每次会话结束</td><td>极低</td></tr>
+          <tr><td class="hd">L1 策略沉淀</td><td>策略卡：{触发模式, 任务类型, 模型, 编辑操作序列, 平均增益, 样本量, 状态}</td><td>M4 的策略库与 few-shot 示例对；M3 模型卡回写</td><td>每日/每周批处理</td><td>低</td></tr>
+          <tr><td class="hd">L2 元提示词进化</td><td>生成器自身元提示词的新版本（挑战者）</td><td>M4 的「大脑」本身，冠军/挑战者机制</td><td>周级，先过冻结基准</td><td>中</td></tr>
+          <tr><td class="hd">L3 权重蒸馏</td><td>SFT/DPO 训练 checkpoint</td><td>一个专门的小型「提示词改写器」模型</td><td>数据量达标后（万级偏好对）</td><td>高，需护栏</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <dl class="kv">
+        <dt>晋升规则</dt><dd>策略卡从 experimental → promoted 需满足：跨 ≥ N 个独立会话 + 增益统计显著 + 冻结基准回归通过。禁止单例晋升——一个案例好不构成知识。</dd>
+        <dt>L3 的燃料</dt><dd>两个来源：① M5 的成对裁决日志（每场 A/B 比较都是一对现成的偏好样本，<strong>零额外标注成本</strong>）；② 高分 IR 的生成轨迹（对话上下文 → 编辑补丁）。训练后走影子部署 → 灰度 → 全量，任何一步回归即回滚。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="mod" id="s3-8">
+    <div class="mod-hd"><span class="id">M8</span><span class="nm">编排、安全与治理</span><span class="one">预算看门人 + 注入防护 + 血缘审计 + 人工闸门</span></div>
+    <div class="mod-bd">
+      <dl class="kv">
+        <dt>职责</dt><dd>四件事。① <strong>模式路由</strong>：判定走从零 / 迭代 / 在线观察哪条入口；② <strong>预算管理</strong>：每会话的调用与 token 上限，评估级别自动降档（L3→L2→L1）而非超支；③ <strong>注入防护</strong>：M1 读取的一切用户文本按数据隔离——生成器自己的元提示词里，指令区与数据区显式分离，杜绝用户对话里的内容劫持生成逻辑（继承 WorkBuddy 六层堆栈的分区原则）；④ <strong>审计与闸门</strong>：每个 IR 版本可追溯到策略、证据、评测分；L2 元提示词晋升与 L3 训练上线必须过人工审核门。</dd>
+        <dt>多租户</dt><dd>策略池分「全局公共」与「租户私有」两层，个人偏好不污染通用策略（详见风险 R5）。</dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section id="s4">
+  <h2><span class="num">四</span> / Data Model</h2>
+  <h3>数据模型：Prompt IR 与原子编辑操作</h3>
+
+  <p class="lead">IR 是全系统唯一的主数据对象。下面给出足以开工的字段草案——实现时可以简化，但有三个字段不可省：<code>instruction_id</code>（原子性）、<code>provenance</code>（出处）、<code>evidence</code>（证据），因为它们分别是「删冗余」「删未提及」「学习归因」的前提。</p>
+
+  <pre><code>IR = {
+  meta:      { id, version, parent_id, task_type, target_model,
+               created_by: "zero|iterate|online", strategy_id }
+  slots: {
+    role:            "角色设定",
+    goal:            { outcome, done_criteria[], non_goals[] },
+    inputs:          [ { ref, type, note } ],        // 材料与引用
+    output:          { format, schema?, length_budget },
+    constraints:     { must[], must_not[], style[] },
+    examples:        [ { input, expected } ],
+    workflow:        [ "步骤…" ]                      // 可选
+  }
+  instructions: [                                  // 原子指令单元
+    { id: "INS-07", text: "…",
+      provenance: "user_turn_3 | seed | gen:s11",  // 血缘：谁带来的
+      ablation:   { tested: true, delta: -0.8 },   // 消融证据
+      status:     "active | suspect | retired" }
+  ]
+  evidence:  { eval_history: [...], usage_stats: {...} }
+  rendered:  { model_id: "…", text: "…", checksum } // 渲染缓存，可重建
+}
+
+Patch = [ OP, … ]   // 迭代模式的输出，而非整篇重写
+  OP = { op: "ADD",     slot, content, provenance, reason }
+     | { op: "DELETE",  ins_id, reason, evidence }        // 冗余/未提及的删除都走这里
+     | { op: "REWRITE",  ins_id, new_text, reason }
+     | { op: "REORDER", ins_id, position, reason }        // 例：中段→尾部，对抗遗忘
+     | { op: "COMPILE", model_id }                        // 渲染出口，最后一步才发生</code></pre>
+
+  <figure>
+    <svg viewBox="0 0 680 218" role="img" aria-label="IR 数据模型与四个动词">
+      <rect x="14" y="60" width="220" height="140" rx="10" fill="#eaeffc" stroke="#c3d1f2"/>
+      <text x="124" y="88" text-anchor="middle" font-size="14" font-weight="700" fill="#2b54c4">Prompt IR（主对象）</text>
+      <text x="30" y="112" font-size="11" fill="#3d4a66">· 槽位 slots：角色/目标/输入/输出/约束</text>
+      <text x="30" y="132" font-size="11" fill="#3d4a66">· 原子指令 instructions（带 id + 血缘）</text>
+      <text x="30" y="152" font-size="11" fill="#3d4a66">· 证据 evidence（评测史 + 使用统计）</text>
+      <text x="30" y="172" font-size="11" fill="#3d4a66">· 渲染缓存 rendered（可随时重建）</text>
+      <!-- ops -->
+      <g>
+        <rect x="286" y="24" width="176" height="34" rx="6" fill="#e6f4f1" stroke="#b6ddd6"/>
+        <text x="374" y="45" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0d7268">ADD — 补遗漏（带出处）</text>
+        <rect x="286" y="72" width="176" height="34" rx="6" fill="#fdf3e3" stroke="#f0dcb8"/>
+        <text x="374" y="93" text-anchor="middle" font-size="11.5" font-weight="700" fill="#a55a08">DELETE — 删冗余 / 删未提及（带证据）</text>
+        <rect x="286" y="120" width="176" height="34" rx="6" fill="#eaeffc" stroke="#c3d1f2"/>
+        <text x="374" y="141" text-anchor="middle" font-size="11.5" font-weight="700" fill="#2b54c4">REWRITE — 措辞优化（带理由）</text>
+        <rect x="286" y="168" width="176" height="34" rx="6" fill="#f1ecfb" stroke="#d8ccf4"/>
+        <text x="374" y="189" text-anchor="middle" font-size="11.5" font-weight="700" fill="#6d3fb8">COMPILE — 按模型卡渲染成文本</text>
+      </g>
+      <path d="M234,130 L280,45" stroke="#9aa4b2" stroke-width="1.3" fill="none" marker-end="url(#fa)"/>
+      <path d="M234,140 L280,90" stroke="#9aa4b2" stroke-width="1.3" fill="none" marker-end="url(#fa)"/>
+      <path d="M234,150 L280,137" stroke="#9aa4b2" stroke-width="1.3" fill="none" marker-end="url(#fa)"/>
+      <path d="M234,160 L280,183" stroke="#9aa4b2" stroke-width="1.3" fill="none" marker-end="url(#fa)"/>
+      <text x="540" y="100" font-size="11" fill="#8b95a3">两个动词只动 IR，</text>
+      <text x="540" y="116" font-size="11" fill="#8b95a3">一个动词才产文本。</text>
+      <text x="540" y="132" font-size="11" fill="#8b95a3">文本永远排在最后一步，</text>
+      <text x="540" y="148" font-size="11" fill="#8b95a3">换模型时只需重跑 COMPILE。</text>
+    </svg>
+    <figcaption>图 2　核心数据模型。三个「补 / 删 / 改」动词全部作用于 IR 层，可独立评审、可回滚、可归因；只有 COMPILE 才产生面向目标模型的文本。</figcaption>
+  </figure>
+
+  <p>这套模型如何精确对应你的三个动词：</p>
+  <ul class="tight">
+    <li><strong>补充遗漏</strong>——M1 从最新对话中抽出新出现的槽位或约束，与当前 IR diff，产出 <code>ADD</code>；provenance 记为具体轮次，日后可查「这条是谁说的」。</li>
+    <li><strong>删除冗余</strong>——语义相似度 + 消融测试定位疑似冗余指令，<code>DELETE</code> 必须附带消融证据（「摘掉它分数不掉」），不允许凭感觉删。</li>
+    <li><strong>删除未提及</strong>——provenance 系统的直接应用：凡是 provenance = <code>gen:</code>（生成器自己加的）且用户全程未互动、评测也无增益的指令，就是「未被提及的内容」，标记 suspect，经消融确认后删除。</li>
+  </ul>
+</section>
+
+<section id="s5">
+  <h2><span class="num">五</span> / Key Flows</h2>
+  <h3>四条关键流程</h3>
+  <p>四条流程共用同一条主干（M1→M4→M5），差别只在入口与触发时机。每条流程都给出触发条件、步骤与出口判据，可直接当作开发任务拆解的依据。</p>
+
+  <div class="flow" id="s5-a">
+    <h5>流程 A · 冷启动：从零搭建</h5>
+    <p class="cond">触发：用户无既有提示词。目标：产出 v1.0 IR 并入库。</p>
+    <ol class="steps">
+      <li><b>意图抽取</b>：M1 解析对话 → Intent Frame（带置信度）；置信度低的关键槽位进入澄清队列。</li>
+      <li><b>澄清循环</b>：按信息增益挑 2–3 个阻塞性问题发问（≤ 2 轮）；用户不答就用合理默认值并显式标注「假设」，绝不卡死等输入。</li>
+      <li><b>骨架检索</b>：M2 按任务类型检索相似成功 IR，取其结构做骨架、其示例做 few-shot 参考。</li>
+      <li><b>多策略生成</b>：M4 用 4 种策略各产 1 个候选 IR（策略 ID 入元数据）。</li>
+      <li><b>三级评估</b>：L1 静态过滤 → L2 交换顺序成对裁决 →（用户开启「深度模式」时）L3 在目标模型上跑抽样用例。</li>
+      <li><b>渲染交付</b>：冠军候选经 M3 按目标模型卡 COMPILE → 展示「成品文本 + 背后的 IR + 评审证据」三件套。</li>
+      <li><b>入库</b>：v1.0 入 M2，血缘、策略、评测分一并落盘——这是未来学习的原材料。</li>
+    </ol>
+    <p class="cond" style="margin:0"><b>出口判据：</b>rubric 全项通过 + 用户确认。产物：IR v1.0 + 渲染文本 + 证据包。</p>
+  </div>
+
+  <div class="flow" id="s5-b">
+    <h5>流程 B · 迭代：基于既有优质提示词改进</h5>
+    <p class="cond">触发：用户提交既有提示词（或从资产库选父版本）。目标：可审计的增量改进，且不伤害既有优点。</p>
+    <ol class="steps">
+      <li><b>种子反解</b>：M1 把既有提示词逆向解析为 IR（这一步本身就用「删未提及」的逆过程：为每条指令建立 provenance=seed 的血缘）。</li>
+      <li><b>意图 diff</b>：对话中体现的最新意图 vs 种子 IR → 生成三张清单：缺失槽位 / 冲突指令 / 疑似冗余。</li>
+      <li><b>补丁生成</b>：M4 产出补丁序列（多个候选补丁包并行），每条操作带 reason 与预期收益。</li>
+      <li><b>回归保护</b>：候选补丁必须在「父版本原本就通过的用例」上不回退，在「新意图用例」上有提升——两条都满足才算赢。这是迭代模式的灵魂：改得差不如不改。</li>
+      <li><b>呈现与确认</b>：以 diff 视图呈现给用户（加了什么、删了什么、为什么、证据是什么），确认后合并。</li>
+      <li><b>版本落地</b>：按操作类型做语义化版本升级（补 = minor，删 = patch，结构 = major），更新版本树。</li>
+    </ol>
+    <p class="cond" style="margin:0"><b>出口判据：</b>回归全绿 + 新用例提升 + 用户签字。产物：IR v(n+1) + diff 报告。</p>
+  </div>
+
+  <div class="flow" id="s5-c">
+    <h5>流程 C · 会话内动态改进（旁路模式）</h5>
+    <p class="cond">触发：M6 的信号规则命中（重复指令 / 纠正语 / 新材料 / 超预算 / 上下文吃紧）。约束：绝不阻塞正在进行的对话。</p>
+    <ol class="steps">
+      <li><b>信号检测</b>：每轮对话后，M6 用轻量规则 + 抽取器扫一遍（单次、便宜），不命中即结束，零额外成本。</li>
+      <li><b>异步补丁</b>：命中 → 后台触发流程 B 的第 2–4 步（diff、补丁、评估），用户侧无感。</li>
+      <li><b>门槛判定</b>：补丁过 L1+L2 且增益超过阈值 → 弹出「建议应用」；未超阈值 → 记入会话待办，会话结束统一处理。</li>
+      <li><b>应用与回滚</b>：用户确认（或达到自动应用阈值，如连续两轮同一信号）→ 应用补丁 → 目标模型侧生效；下一轮输出未见改善 → 自动回滚并记入反思。</li>
+      <li><b>会话复盘</b>：会话结束，M7-L0 生成反思笔记：本会话哪类信号、哪种补丁、效果如何——飞轮的最底层原料。</li>
+    </ol>
+    <p class="cond" style="margin:0"><b>出口判据：</b>每条补丁要么被应用并验证、要么被明确否决（否决也要留痕，负样本同样是学习材料）。</p>
+  </div>
+
+  <div class="flow" id="s5-d">
+    <h5>流程 D · 蒸馏与自训练（离线飞轮）</h5>
+    <p class="cond">触发：定时批处理（日/周级）。目标：让「生成方式」本身变好，并防止越学越歪。</p>
+    <ol class="steps">
+      <li><b>证据聚合</b>：收集全部（对话上下文 → 补丁 → 评测分 → 用户反馈）轨迹，按任务类型 × 目标模型分桶。</li>
+      <li><b>归因分析</b>：统计各策略 / 各编辑操作在各桶上的增益——产出候选策略卡（experimental 状态）。</li>
+      <li><b>反思蒸馏</b>：用最强的反思模型读失败案例与成功案例，产出自然语言形式的改进建议——这些建议就是元提示词的修订提案（GEPA 式：反馈是文字，不只是分数）。</li>
+      <li><b>晋升闸门</b>：候选策略卡与新元提示词必须在<strong>冻结基准集</strong>上跑冠军/挑战者；挑战者胜出幅度超阈值才晋升，否则丢弃。人工审核门在此处介入。</li>
+      <li><b>权重蒸馏（可选，数据达标后）</b>：用裁决日志构造偏好对（赢方/输方）做 DPO；用高分轨迹构造 SFT 对微调小型改写器；KL 约束 + 提前停，防止偏离基座太远。</li>
+      <li><b>影子验证</b>：新能力先影子运行（只记录不生效），对比线上冠军的表现；通过 → 灰度 → 全量，任一环节回归即回滚。</li>
+    </ol>
+    <p class="cond" style="margin:0"><b>出口判据：</b>冻结基准不回退 + 线上指标改善 + 审计链完整。任何一步失败都能一键回退到上个冠军。</p>
+  </div>
+</section>
+
+<section id="s6">
+  <h2><span class="num">六</span> / Learning Loop</h2>
+  <h3>自学习闭环：从日志到能力</h3>
+
+  <figure>
+    <svg viewBox="0 0 680 300" role="img" aria-label="自学习飞轮">
+      <defs>
+        <marker id="fc" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" fill="#8a7fd0"/>
+        </marker>
+      </defs>
+      <!-- outer ring label -->
+      <rect x="330" y="12" width="330" height="46" rx="8" fill="#f1ecfb" stroke="#d8ccf4"/>
+      <text x="495" y="31" text-anchor="middle" font-size="11.5" font-weight="700" fill="#6d3fb8">L3 权重蒸馏（仅当偏好对 ≥ 万级）</text>
+      <text x="495" y="47" text-anchor="middle" font-size="10" fill="#6d3fb8">裁决日志 → DPO 偏好对 · 高分轨迹 → SFT · 影子部署</text>
+
+      <!-- cycle nodes -->
+      <g font-weight="700" font-size="12.5">
+        <rect x="60" y="86" width="180" height="56" rx="10" fill="#eaeffc" stroke="#c3d1f2"/>
+        <text x="150" y="108" text-anchor="middle" fill="#2b54c4">运行时产生证据</text>
+        <text x="150" y="126" text-anchor="middle" font-size="10" font-weight="400" fill="#67707e">版本树 · 裁决日志 · 会话轨迹</text>
+
+        <rect x="330" y="86" width="180" height="56" rx="10" fill="#e6f4f1" stroke="#b6ddd6"/>
+        <text x="420" y="108" text-anchor="middle" fill="#0d7268">归因与蒸馏</text>
+        <text x="420" y="126" text-anchor="middle" font-size="10" font-weight="400" fill="#67707e">L0 笔记 → L1 策略卡 → L2 修订提案</text>
+
+        <rect x="330" y="190" width="180" height="56" rx="10" fill="#fdf3e3" stroke="#f0dcb8"/>
+        <text x="420" y="212" text-anchor="middle" fill="#a55a08">冻结基准 + 冠军挑战者</text>
+        <text x="420" y="230" text-anchor="middle" font-size="10" font-weight="400" fill="#67707e">回归不通过 → 直接丢弃</text>
+
+        <rect x="60" y="190" width="180" height="56" rx="10" fill="#fbeceb" stroke="#eec7c9"/>
+        <text x="150" y="212" text-anchor="middle" fill="#a8323a">能力升级生效</text>
+        <text x="150" y="230" text-anchor="middle" font-size="10" font-weight="400" fill="#67707e">策略库 · 示例对 · 模型卡 · 元提示词</text>
+      </g>
+      <!-- cycle arrows -->
+      <path d="M240,114 L324,114" stroke="#8a7fd0" stroke-width="1.6" fill="none" marker-end="url(#fc)"/>
+      <path d="M420,142 L420,182" stroke="#8a7fd0" stroke-width="1.6" fill="none" marker-end="url(#fc)"/>
+      <path d="M330,218 L246,218" stroke="#8a7fd0" stroke-width="1.6" fill="none" marker-end="url(#fc)"/>
+      <path d="M150,190 L150,148" stroke="#8a7fd0" stroke-width="1.6" fill="none" marker-end="url(#fc)"/>
+      <!-- L3 feed -->
+      <path d="M420,86 C420,60 470,58 495,58" stroke="#b9a9e8" stroke-width="1.4" fill="none" stroke-dasharray="4 3" marker-end="url(#fc)"/>
+      <path d="M495,58 C560,58 560,160 516,190" stroke="#b9a9e8" stroke-width="1.4" fill="none" stroke-dasharray="4 3" marker-end="url(#fc)"/>
+      <text x="120" y="278" font-size="11" fill="#8b95a3">内环：L0–L2，纯提示词层升级，周级节奏，随时可回滚</text>
+      <text x="500" y="278" font-size="11" fill="#8b95a3">外环：L3，权重层，仅在大数据量时启动</text>
+    </svg>
+    <figcaption>图 3　自学习飞轮。内环（提示词层）便宜、可逆、先行；外环（权重层）昂贵、需护栏、后置。两者的共同入口都是运行时证据，共同闸门都是冻结基准。</figcaption>
+  </figure>
+
+  <p>「蒸馏与自学习」最容易犯的错是把四层混为一谈、直接上微调。分层的原因是风险与可逆性完全不同：L0–L2 只改提示词层的资产，出问题回滚即愈；L3 动权重，回滚成本高、且有<strong>自训练坍缩</strong>风险（模型在自己输出上循环训练导致分布退化）。所以护栏必须写进设计：</p>
+  <ul class="tight">
+    <li><strong>数据配比上限</strong>：自生成数据在训练集中占比设硬顶（例如 ≤ 30%），真实用户轨迹与人工核验样本必须保持主体；</li>
+    <li><strong>冻结基准</strong>：一套从不参与训练的评测集，每次晋升必跑，回归即拦截；</li>
+    <li><strong>多样性巡检</strong>：训练对的语义嵌入做离散度监控，分布收窄（全都长得像）即告警；</li>
+    <li><strong>负样本保留</strong>：被否决的补丁、失败的策略照常入库，防止系统只记住成功路径而丧失判别力；</li>
+    <li><strong>人工审核门</strong>：L2 元提示词晋升与 L3 上线永远需要人签字——这是「持续同步优化」不变成「持续同步漂移」的最后一道闸。</li>
+  </ul>
+</section>
+
+<section id="s7">
+  <h2><span class="num">七</span> / Model Selection</h2>
+  <h3>模型选型：待定不等于悬空——先定角色，再定型号</h3>
+  <p class="lead">「模型待定」的正确处理方式不是等，而是把系统对模型的要求写成规格。本系统对 LLM 的需求其实是<strong>四个角色</strong>，可以由一至多个模型承担：</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:110px">角色</th><th>干什么</th><th>硬性要求</th><th>调用量级</th><th>选型倾向</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">生成器</td><td>意图抽取、候选生成、种子反解（M1/M4）</td><td>32k+ 上下文、结构化输出、强指令遵循</td><td>每任务数次</td><td>中高价位的强推理模型</td></tr>
+      <tr><td class="hd">裁判</td><td>成对裁决、rubric 核对（M5-L2）</td><td>输出一致性（低温度）、与生成器异族为佳</td><td>每任务 2N 次</td><td>中低价位、稳定的模型</td></tr>
+      <tr><td class="hd">反思器</td><td>离线失败归因、修订提案（M7）</td><td>最强可用推理</td><td>周级批处理</td><td>旗舰模型（只在飞轮里用，摊薄成本）</td></tr>
+      <tr><td class="hd">目标模型</td><td>被生成提示词驱动的最终 AI（用户侧）</td><td>无要求——任意</td><td>视用户而定</td><td>由场景决定，逐个建模型卡</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>三条选型经验直接写进约束：① <strong>裁判与生成器尽量异族</strong>——同族模型自评有系统性偏好，上一轮拆解 gpt-prompt-engineer 时已确认这是单一裁判的最大隐患；② <strong>贵的模型用在低频高层</strong>——反思器只在周级批处理里调用（GEPA 的 reflection_lm 模式：贵模型指挥，便宜模型干活）；③ <strong>目标模型永远是被测对象</strong>——任何候选提示词未经目标模型实测（L3）就宣称「适配」，都只是 L2 层面的推断，对外话术要如实区分。</p>
+</section>
+
+<section id="s8">
+  <h2><span class="num">八</span> / Roadmap</h2>
+  <h3>落地路线：六阶段，每阶段有独立可验收的出口</h3>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:96px">阶段</th><th>做什么</th><th>交付物</th><th>出口判据</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="hd">P0 原型<br><span style="font-weight:400;color:var(--faint)">1–2 周</span></td>
+        <td>M1 + M4（单策略）+ M5 的 L1/L2 + 最简 IR。先不做版本树、不做在线模式。</td>
+        <td>双模式（从零 / 迭代）命令行版</td>
+        <td>10 个真实任务上人工验收：产出可用率 ≥ 70%</td>
+      </tr>
+      <tr>
+        <td class="hd">P1 适配<br><span style="font-weight:400;color:var(--faint)">+2 周</span></td>
+        <td>M3 模型卡 × 3 款主流目标模型；M2 版本树与回归评估。</td>
+        <td>逐模型渲染 + 回归护栏</td>
+        <td>同一 IR 三模型渲染均通过 L1；迭代改动零回归</td>
+      </tr>
+      <tr>
+        <td class="hd">P2 在线<br><span style="font-weight:400;color:var(--faint)">+3 周</span></td>
+        <td>M6 信号规则 v1（六条规则）+ 异步补丁管道 + 自动回滚。</td>
+        <td>会话内动态改进可用</td>
+        <td>补丁建议采纳率 ≥ 40%，误伤率 &lt; 5%</td>
+      </tr>
+      <tr>
+        <td class="hd">P3 记忆<br><span style="font-weight:400;color:var(--faint)">+3 周</span></td>
+        <td>M7-L0/L1：会话反思 + 策略卡 + 裁决日志→偏好数据管道。</td>
+        <td>第一张 promoted 策略卡</td>
+        <td>有策略卡的场景，新会话首轮命中率显著优于无卡基线</td>
+      </tr>
+      <tr>
+        <td class="hd">P4 进化<br><span style="font-weight:400;color:var(--faint)">+4 周</span></td>
+        <td>M7-L2：元提示词冠军/挑战者 + 冻结基准 + 人工审核门。</td>
+        <td>生成器自我升级闭环</td>
+        <td>挑战者在冻结基准上稳定胜出后才可晋升，全程可回滚</td>
+      </tr>
+      <tr>
+        <td class="hd">P5 蒸馏<br><span style="font-weight:400;color:var(--faint)">数据达标后</span></td>
+        <td>M7-L3：SFT/DPO 小型改写器 + 影子部署。（仅在偏好对过万、P4 稳定运行后启动）</td>
+        <td>自训练改写器（可选）</td>
+        <td>影子期指标不劣于冠军；人工抽检通过</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>排期逻辑说明：先把「生成-评估-选择」主干跑通（P0），因为它是后面一切的地基——没有评估就没有回归保护，没有回归保护就不敢做在线改进，没有在线改进就没有飞轮原料。自训练排在最后不是因为不重要，而是因为<strong>它吃的是前面所有阶段攒下的证据</strong>；证据不够就训练，等于拿噪声当教材。</p>
+</section>
+
+<section id="s9">
+  <h2><span class="num">九</span> / Risks &amp; Decisions</h2>
+  <h3>风险清单与待你决策的问题</h3>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:200px">风险</th><th>对策（已写入设计）</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">R1 裁判偏好被继承</td><td>rubric 锚定（评的必须是意图框架里的可勾选项）+ 交换顺序双裁 + 异族裁判 + 定期人工抽检复核。</td></tr>
+      <tr><td class="hd">R2 过拟合到个例</td><td>策略晋升需跨会话显著性；训练/验证/测试三分；冻结基准永不参与优化。</td></tr>
+      <tr><td class="hd">R3 自训练坍缩</td><td>自生成数据占比设硬顶；嵌入多样性巡检；负样本保留；L3 前置 P4 稳定性门槛。</td></tr>
+      <tr><td class="hd">R4 用户文本注入生成器</td><td>M8 强制指令区/数据区分离；M1 抽取结果只进结构字段；渲染时用户内容永远在带边界的数据区。</td></tr>
+      <tr><td class="hd">R5 个人偏好污染通用策略</td><td>全局策略池与租户策略池双层隔离；晋升统计只认跨租户复现的增益。</td></tr>
+      <tr><td class="hd">R6 IR 表达力不够（创意类任务）</td><td>IR 保留 freeform 段作为逃生舱；不强行结构化无法结构化的风格描述，但血缘与消融仍然适用。</td></tr>
+      <tr><td class="hd">R7 成本失控</td><td>预算管理器 + 评估自动降档 + L3 仅深度模式开启 + 异步而非同步评估。</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>以下是本方案留给你拍板的六个决策点，定了我就可以细化对应模块或直接开工 P0：</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:60px">#</th><th>决策点</th><th>我的默认建议</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">D1</td><td>运行形态：独立服务 / 内嵌到某个 Agent 框架 / CLI 工具？</td><td>独立服务 + API，旁路模式留出 webhook 挂钩</td></tr>
+      <tr><td class="hd">D2</td><td>生成器与裁判选哪两家模型（异族优先）？</td><td>先各选一家跑 P0，用 10 个基准任务实测后再定</td></tr>
+      <tr><td class="hd">D3</td><td>L3 执行验证默认开还是关（贵）？</td><td>默认关，提供「深度模式」开关</td></tr>
+      <tr><td class="hd">D4</td><td>在线补丁自动应用的门槛（纯人工确认 / 高置信自动）？</td><td>初期纯人工确认，攒够数据再调阈值</td></tr>
+      <tr><td class="hd">D5</td><td>单租户工具还是多租户平台（影响 M2/M8 设计深度）？</td><td>按多租户设计、单租户部署，成本几乎相同</td></tr>
+      <tr><td class="hd">D6</td><td>IR 的 schema 用 JSON 还是 YAML 承载？</td><td>存储用 JSON（可校验），展示用 YAML（人可读）</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="key violet">
+    <b>全案收束：</b>这套系统 = <b>一个主对象</b>（Prompt IR：文本只是它的投影）+ <b>一条主干</b>（M1 理解 → M4 生成 → M5 评估，四条流程只是不同的入口）+ <b>一层隔离</b>（模型差异全部关在 M3 的模型卡里）+ <b>一个飞轮</b>（运行时证据 → 策略沉淀 → 生成能力升级，评估日志天然就是自训练数据）。复杂度全部压在「评估」和「归因」两处——这不是偷懒，而是因为上一轮分析已经证明：<b>评估信号的上限，就是提示词工程自动化的上限。</b>
+  </div>
+</section>
+
+<footer>
+  <p style="font-size:12px;color:#a8b0bc;">v0.1 讨论稿 · 2026-10-24 · 延续《提示词生成器的工作原理》分析结论设计（三族分类、两个杠杆、评估信号决定上限、相对比较优于绝对打分、模型特异最优等原则均出自该分析）。</p>
+  <p style="font-size:12px;color:#a8b0bc;">设计中对标的开源机制：DSPy 的 Signature/优化器谱系与 GEPA 反思反馈、gpt-prompt-engineer 的 Elo 锦标赛与成对裁决、guidance/BAML 的「结构优先于文本」、LangGPT 的槽位骨架、Promptist 的权重蒸馏路线（P5 阶段）、prompt-optimizer 的双模式（系统/用户）区分。</p>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

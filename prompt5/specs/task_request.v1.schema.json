@@ -1,0 +1,189 @@
+{
+  "$defs": {
+    "DialogueTurn": {
+      "additionalProperties": false,
+      "properties": {
+        "turn": {
+          "minimum": 1,
+          "title": "Turn",
+          "type": "integer"
+        },
+        "role": {
+          "enum": [
+            "user",
+            "assistant",
+            "system"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "content_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content Hash"
+        }
+      },
+      "required": [
+        "turn",
+        "role",
+        "text"
+      ],
+      "title": "DialogueTurn",
+      "type": "object"
+    },
+    "MaterialRef": {
+      "additionalProperties": false,
+      "properties": {
+        "blob_id": {
+          "minLength": 1,
+          "title": "Blob Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "blob_id"
+      ],
+      "title": "MaterialRef",
+      "type": "object"
+    },
+    "TaskInput": {
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "default": "zero",
+          "enum": [
+            "zero",
+            "seed"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "dialogue": {
+          "items": {
+            "$ref": "#/$defs/DialogueTurn"
+          },
+          "title": "Dialogue",
+          "type": "array"
+        },
+        "materials": {
+          "items": {
+            "$ref": "#/$defs/MaterialRef"
+          },
+          "maxItems": 20,
+          "title": "Materials",
+          "type": "array"
+        },
+        "target_model": {
+          "title": "Target Model",
+          "type": "string"
+        },
+        "rubric_policy": {
+          "const": "draft_then_confirm",
+          "default": "draft_then_confirm",
+          "title": "Rubric Policy",
+          "type": "string"
+        },
+        "seed_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seed Text"
+        },
+        "parent_ir_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Ir Id"
+        }
+      },
+      "required": [
+        "target_model"
+      ],
+      "title": "TaskInput",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "api_version": {
+      "const": "1",
+      "default": "1",
+      "title": "Api Version",
+      "type": "string"
+    },
+    "request_id": {
+      "minLength": 1,
+      "title": "Request Id",
+      "type": "string"
+    },
+    "idempotency_key": {
+      "minLength": 1,
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "connector_id": {
+      "minLength": 1,
+      "title": "Connector Id",
+      "type": "string"
+    },
+    "tenant_id": {
+      "minLength": 1,
+      "title": "Tenant Id",
+      "type": "string"
+    },
+    "op": {
+      "enum": [
+        "generate.v1",
+        "iterate.v1"
+      ],
+      "title": "Op",
+      "type": "string"
+    },
+    "input": {
+      "$ref": "#/$defs/TaskInput"
+    },
+    "budget_hint": {
+      "additionalProperties": true,
+      "title": "Budget Hint",
+      "type": "object"
+    },
+    "extensions": {
+      "additionalProperties": true,
+      "title": "Extensions",
+      "type": "object"
+    }
+  },
+  "required": [
+    "request_id",
+    "idempotency_key",
+    "connector_id",
+    "tenant_id",
+    "op",
+    "input"
+  ],
+  "title": "TaskRequest",
+  "type": "object"
+}

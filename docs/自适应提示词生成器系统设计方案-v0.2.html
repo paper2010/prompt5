@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自适应提示词生成器 · 系统设计方案 v0.2（响应审查修订版）</title>
+<style>
+  :root{
+    --ink:#171a20;--ink-2:#333a45;--muted:#67707e;--faint:#8b95a3;
+    --line:#e4e7ec;--line-2:#eef0f4;--bg:#ffffff;--soft:#f7f8fa;--soft-2:#f1f4f9;
+    --accent:#2b54c4;--accent-soft:#eaeffc;
+    --teal:#0d7268;--teal-soft:#e6f4f1;
+    --amber:#a55a08;--amber-soft:#fdf3e3;
+    --rose:#a8323a;--rose-soft:#fbeceb;
+    --violet:#6d3fb8;--violet-soft:#f1ecfb;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Inter","Segoe UI",system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    font-size:16px;line-height:1.78;letter-spacing:.01em;-webkit-font-smoothing:antialiased;}
+  .wrap{display:grid;grid-template-columns:212px minmax(0,1fr);gap:56px;max-width:1160px;margin:0 auto;padding:0 40px 120px;}
+  .toc{position:sticky;top:0;align-self:start;max-height:100vh;overflow:auto;padding:52px 0 40px;font-size:13px;line-height:1.6;}
+  .toc-title{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:14px;font-weight:600;}
+  .toc a{display:block;color:var(--muted);text-decoration:none;padding:5px 0 5px 12px;border-left:2px solid var(--line-2);transition:.15s;}
+  .toc a:hover{color:var(--accent);border-left-color:var(--accent);}
+  .toc a.lv1{font-weight:600;color:var(--ink-2);margin-top:10px;}
+  .toc a.lv2{padding-left:24px;font-size:12.5px;}
+  header{padding:64px 0 0;}
+  .kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:18px;}
+  h1{font-size:36px;line-height:1.25;letter-spacing:-.02em;font-weight:750;margin:0 0 18px;color:#0e1116;}
+  .sub{font-size:17px;color:var(--muted);line-height:1.75;margin:0 0 26px;max-width:46em;}
+  .meta{display:flex;flex-wrap:wrap;gap:10px;font-size:12.5px;color:var(--faint);padding-bottom:26px;border-bottom:1px solid var(--line);}
+  .meta span{padding:3px 10px;background:var(--soft);border-radius:999px;}
+  section{padding-top:54px;}
+  h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);font-weight:700;margin:0 0 8px;}
+  h3{font-size:26px;line-height:1.35;font-weight:700;letter-spacing:-.01em;margin:0 0 22px;color:#0e1116;padding-bottom:16px;border-bottom:1px solid var(--line);}
+  h4{font-size:18.5px;line-height:1.5;font-weight:700;margin:38px 0 12px;color:#12161d;}
+  h5{font-size:15px;font-weight:700;margin:22px 0 8px;color:var(--ink-2);}
+  p{margin:0 0 15px;}
+  strong{font-weight:650;color:#0f1319;}
+  em{font-style:normal;background:linear-gradient(transparent 62%,#fdf0c8 62%);padding:0 1px;}
+  a{color:var(--accent);}
+  code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:.875em;background:var(--soft-2);padding:1.5px 5px;border-radius:4px;color:#243046;}
+  pre{background:#0f1420;color:#dbe2ee;border-radius:var(--radius);padding:18px 20px;overflow-x:auto;font-size:13px;line-height:1.65;margin:18px 0;}
+  pre code{background:none;padding:0;color:inherit;font-size:inherit;}
+  .lead{font-size:17px;line-height:1.8;color:var(--ink-2);border-left:2px solid var(--accent);padding-left:20px;margin:0 0 24px;}
+  .note{background:var(--soft);border:1px solid var(--line);border-radius:var(--radius);padding:18px 22px;font-size:14.5px;line-height:1.72;color:var(--ink-2);margin:22px 0;}
+  .note .tag{display:inline-block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--faint);margin-bottom:6px;}
+  .key{background:var(--accent-soft);border:1px solid #d3ddf8;border-left:3px solid var(--accent);border-radius:6px;padding:16px 20px;margin:22px 0;font-size:15px;line-height:1.72;color:#1c2a4a;}
+  .key b{color:var(--accent);}
+  .key.rose{background:var(--rose-soft);border-color:#eec7c9;border-left-color:var(--rose);}
+  .key.rose b{color:var(--rose);}
+  .key.violet{background:var(--violet-soft);border-color:#dccff6;border-left-color:var(--violet);}
+  .key.violet b{color:var(--violet);}
+  figure{margin:30px 0;padding:0;}
+  figure svg{display:block;width:100%;height:auto;background:var(--soft);border:1px solid var(--line);border-radius:var(--radius);}
+  figcaption{font-size:12.5px;color:var(--faint);margin-top:9px;line-height:1.6;text-align:center;}
+  .scroll{overflow-x:auto;margin:24px 0;border:1px solid var(--line);border-radius:var(--radius);}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;line-height:1.6;min-width:640px;}
+  th{background:#f4f6f9;text-align:left;font-weight:700;color:var(--ink-2);padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap;font-size:12.8px;}
+  td{padding:10px 14px;border-bottom:1px solid var(--line-2);vertical-align:top;color:var(--ink-2);}
+  tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:#fafbfc;}
+  td.hd{font-weight:650;color:var(--ink);background:#fcfcfd;}
+  ul,ol{margin:0 0 16px;padding-left:1.35em;}
+  li{margin:0 0 7px;}
+  li::marker{color:var(--faint);}
+  .tight li{margin-bottom:4px;}
+  .chip{display:inline-block;font-size:11.5px;padding:2px 9px;border-radius:999px;font-weight:600;margin-right:6px;}
+  .c-ok{background:var(--teal-soft);color:var(--teal);}
+  .c-part{background:var(--amber-soft);color:var(--amber);}
+  .c-fix{background:var(--accent-soft);color:var(--accent);}
+  .steps{counter-reset:s;list-style:none;padding:0;margin:18px 0;}
+  .steps li{counter-increment:s;position:relative;padding-left:38px;margin-bottom:13px;}
+  .steps li::before{content:counter(s);position:absolute;left:0;top:1px;width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:"SFMono-Regular",Consolas,monospace;}
+  .steps b{display:block;margin-bottom:2px;}
+  footer{margin-top:70px;padding-top:28px;border-top:1px solid var(--line);font-size:13px;color:var(--faint);line-height:1.8;}
+  @media (max-width:980px){
+    .wrap{grid-template-columns:1fr;gap:0;padding:0 24px 80px;}
+    .toc{display:none;}
+    h1{font-size:29px;}
+    h3{font-size:21px;}
+    header{padding-top:40px;}
+  }
+  @media print{
+    .toc{display:none;}
+    .wrap{display:block;max-width:none;padding:0;}
+    section,figure{page-break-inside:avoid;}
+    body{font-size:11pt;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav class="toc">
+  <div class="toc-title">目录</div>
+  <a href="#s0" class="lv1">v0.2 修订总览</a>
+  <a href="#s0-1" class="lv2">审查意见处置对照表</a>
+  <a href="#s1" class="lv1">一 · 设计立场 v2</a>
+  <a href="#s2" class="lv1">二 · 范围收窄</a>
+  <a href="#s2-1" class="lv2">场景能力矩阵</a>
+  <a href="#s2-2" class="lv2">显式非目标清单</a>
+  <a href="#s3" class="lv1">三 · 核心对象重构</a>
+  <a href="#s3-1" class="lv2">PromptIR v2</a>
+  <a href="#s3-2" class="lv2">RenderedPrompt / EvalRun</a>
+  <a href="#s4" class="lv1">四 · Patch 契约 v2</a>
+  <a href="#s5" class="lv1">五 · 评估体系 v2</a>
+  <a href="#s5-1" class="lv2">三层证据</a>
+  <a href="#s5-2" class="lv2">Rubric 校准</a>
+  <a href="#s5-3" class="lv2">统计与成本</a>
+  <a href="#s6" class="lv1">六 · 删除判定 v2</a>
+  <a href="#s7" class="lv1">七 · 会话内改进 v2</a>
+  <a href="#s8" class="lv1">八 · 自学习数据治理</a>
+  <a href="#s9" class="lv1">九 · 安全与租户治理</a>
+  <a href="#s10" class="lv1">十 · 阶段计划 v2</a>
+  <a href="#s10-1" class="lv2">P0-前置三规范</a>
+  <a href="#s10-2" class="lv2">P0a / P0b 及验收口径</a>
+  <a href="#s11" class="lv1">十一 · 表述修正与遗留问题</a>
+</nav>
+
+<main>
+
+<header>
+  <div class="kicker">System Design · Revision v0.2</div>
+  <h1>自适应提示词生成器：系统设计方案 v0.2</h1>
+  <p class="sub">v0.1 讨论稿经外部审查后全面修订：12 项审查意见全部处置（10 项接受、2 项带理由收窄），核心变更为——评估对象拆为三对象、Patch 契约重写、范围从「大多数 Agent」收窄为「文本/系统提示词 MVP」、基准与版本记录前移、自学习数据按弱监督治理。</p>
+  <div class="meta">
+    <span>v0.2 修订版</span>
+    <span>响应 12 项审查意见</span>
+    <span>新增 3 份前置规范骨架</span>
+    <span>2026-10-24</span>
+  </div>
+</header>
+
+<section id="s0">
+  <h3>v0.2 修订总览：这次改了什么、为什么</h3>
+  <p class="lead">v0.1 的四项核心选择（IR+原子补丁、生成-评估-选择主干、IR 与渲染分离、L0–L3 渐进自学习）经审查确认方向成立，予以保留。<strong>本次修订不改方向，改的是工程契约与承诺边界</strong>：把「看起来自洽」的方案改成「可以被验收」的方案。</p>
+
+  <p>五处结构性改动贯穿全文，先在这里说清，后文按节展开：</p>
+  <ol class="tight">
+    <li><strong>评估对象一分为三</strong>（§3）：PromptIR（结构合法性）、RenderedPrompt（表达质量）、EvalRun（目标模型执行效果）是三种不可互换的证据。v0.1 说「所有评估发生在 IR 层面」，这句话被审查正确地判定为根本歧义，予以撤回。</li>
+    <li><strong>单一事实源 + 统一寻址</strong>（§3.1、§4）：slots 是唯一事实源，指令清单降级为编译期派生物；Patch 全部操作改用 <code>loc</code> 统一寻址，并补齐 base_version、前置校验、幂等键、事务边界；COMPILE 从 Patch 类型中独立出去。</li>
+    <li><strong>范围收窄</strong>（§2）：MVP 定位为「单轮或边界清晰的文本/系统提示词生成」，不再宣称「适配大多数 AI Agent」；消息角色、工具 schema、多 Agent 编排在能力矩阵中显式列为非目标。</li>
+    <li><strong>基准与版本记录前移</strong>（§10）：版本化基准、人工金标与最小不可变版本记录从 P0 开始，P0 拆为 P0a（从零）/ P0b（迭代）两条独立可验收流程，消除 v0.1「迭代模式需要版本树但 P0 不做版本树」的依赖矛盾。</li>
+    <li><strong>自学习按弱监督治理</strong>（§8）：裁决日志降格为「裁判生成的弱标签」，补 DPO 对构造规则、血缘级数据切分（防近邻泄漏）、数据卡与撤销传播；P5 改为 ROI 与瓶颈驱动，不再由数据量单一条件触发。</li>
+  </ol>
+
+  <h4 id="s0-1">0.1 审查意见处置对照表</h4>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:36px">#</th><th style="width:220px">审查意见</th><th style="width:86px">处置</th><th>修订落点与要点</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">1</td><td>评估对象歧义：IR 分 / 文本分 / 执行结果是三种证据</td><td><span class="chip c-ok">接受</span></td><td>§3 三对象模型 + §5.1 证据金字塔：每种证据只支持对应层级的结论；「适配某模型」只能引用 EvalRun。</td></tr>
+      <tr><td class="hd">2</td><td>Rubric 由 M1 自动生成会形成错误意图的自我强化</td><td><span class="chip c-ok">接受</span></td><td>§5.2：rubric v1 必须经用户确认/修订后才生效（t0 人工锚点）；版本化；周期人工抽检；用户满意度与 rubric 冲突时触发 rubric 版本升级而非直接采信裁判。</td></tr>
+      <tr><td class="hd">3</td><td>IR/Patch 契约缺口：双事实源、寻址不完整、命名不一致、rendered 单对象、无 base_version/幂等/事务、COMPILE 混类</td><td><span class="chip c-ok">接受</span></td><td>§3.1 + §4 全部重写：slots 单一事实源、统一 <code>loc</code> 寻址、<code>schema_version</code>、<code>RenderedPrompt</code> 数组带模型/渲染器/解码快照、Patch 带 base 校验与幂等键、事务 all-or-nothing、COMPILE 独立为渲染命令。<code>id</code>/<code>instruction_id</code> 命名不一致确系笔误，致谢。</td></tr>
+      <tr><td class="hd">4</td><td>「删除未提及」判定不成立：未提及 ≠ 无必要</td><td><span class="chip c-part">接受并收窄</span></td><td>§6：删除依据从 provenance 改为证据阶梯；provenance <strong>降级为筛查信号</strong>（决定复核优先级），不再是删除依据；安全/硬格式约束进入保护类，永不被自动删除。</td></tr>
+      <tr><td class="hd">5</td><td>「大多数 AI Agent」超出 IR 表达范围</td><td><span class="chip c-part">接受并收窄</span></td><td>§2：MVP 收窄为文本/系统提示词；消息角色、工具 schema、多 Agent 状态列显式非目标，经 <code>schema_version</code> 预留扩展位而非现在硬做。对外表述同步修正（§11）。</td></tr>
+      <tr><td class="hd">6</td><td>P0 依赖矛盾：迭代要版本树与回归基准，P0 却不做</td><td><span class="chip c-ok">接受</span></td><td>§10：P0 拆 P0a（从零）/ P0b（迭代）；最小不可变版本记录（append-only 台账）与版本化回归基准在 P0b 开工前就位；冻结基准不再后置于 P4。</td></tr>
+      <tr><td class="hd">7</td><td>异步补丁的过期应用、振荡回滚、「零成本」表述</td><td><span class="chip c-ok">接受</span></td><td>§7：<code>session_epoch + base_version</code> CAS 校验、任务取消、过期补丁作废重排；取消「下一轮未改善即回滚」，改为归因窗口 + 滞回判定；「零额外成本」修正为「低成本但非零」。</td></tr>
+      <tr><td class="hd">8</td><td>裁判调用量 2N 有误（全配对应为 N(N−1)）；平局/不一致/非传递/全败未定义</td><td><span class="chip c-ok">接受</span></td><td>§5.3：修正公式并给出预算表（N=4 全配对交换双裁为 12 次）；定义平局、双裁不一致重裁一次、仍不一致记平局、允许非传递并按积分排名、全候选不过硬门时宁缺毋滥升级人工。</td></tr>
+      <tr><td class="hd">9</td><td>单条消融不能证明冗余（交互、噪声、低频场景、安全冗余）</td><td><span class="chip c-ok">接受</span></td><td>§6：消融升级为「重复 ≥3 次 + 组合消融 + 保护类豁免」；低频高危场景由对抗用例集覆盖；判定为「降级候选」而非「自动删除」。</td></tr>
+      <tr><td class="hd">10</td><td>「裁决日志是零成本训练数据」过强；存在版本近邻泄漏</td><td><span class="chip c-ok">接受</span></td><td>§8：全部按弱监督治理——同上下文构造偏好对、语义去重、标签抽检准确率、按血缘切分（同一 IR 谱系不跨训练/测试集）、数据卡与撤销传播。</td></tr>
+      <tr><td class="hd">11</td><td>注入防护与租户隔离停留原则层（存储型注入、派生资产泄漏、D5 无依据）</td><td><span class="chip c-ok">接受</span></td><td>§9：威胁模型表覆盖六类输入源；「杜绝注入」改为「降低与检测」；隔离边界扩展到检索结果、反思文本、派生策略卡；训练 opt-in、保留期、删除传播、PII；撤回 D5「成本几乎相同」的断言，列为待实测。</td></tr>
+      <tr><td class="hd">12</td><td>验收指标不可执行（无定义、无分母、无统计口径、无降级路径）</td><td><span class="chip c-ok">接受</span></td><td>§10.2：逐项重写——「可用」给出操作性定义并降格为冒烟指标；采纳率补分母与观察窗；「显著/非劣」给出统计口径与预注册 ε；补全模型限流、裁判不可用、非法 JSON、无候选通过等降级路径（§5.3）。</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="note">
+    <div class="tag">Review verdict</div>
+    审查的总体结论被采纳为本次修订的基调：<strong>批准收窄后的 P0 技术验证，不按 v0.1 文本直接承诺 P1–P5 排期</strong>；不对外承诺「适配大多数 AI Agent」与「任意目标模型」。进入 P0 前先交付三份规范（§10.1），其余能力由数据与阶段门槛驱动，不由预定排期驱动。
+  </div>
+</section>
+
+<section id="s1">
+  <h2><span class="num">一</span> / Principles v2</h2>
+  <h3>设计立场：三条旧铁律 + 两条新铁律</h3>
+  <p>v0.1 的三条铁律（模型特异最优、评估信号上限即优化上限、相对优于绝对/结构优于措辞）经审查未受质疑，保留。本次新增两条，直接来自审查意见 1、6：</p>
+
+  <div class="key">
+    <b>新铁律四：三种证据不可互换。</b>结构合法（IR 静态检查）、表达质量（裁判 rubric）、执行效果（目标模型实测）分别支持不同强度的结论。任何对外结论必须注明证据层级——「渲染通过 L1」不能说成「适配该模型」，「裁判更喜欢」不能说成「效果更好」。
+  </div>
+  <div class="key">
+    <b>新铁律五：基准与版本记录先于一切自动化。</b>没有版本化基准与不可变版本台账，就不存在可信的「回归保护」，也就不存在安全的迭代、在线改进与自学习。它们是地基，不是 P4 的装饰。
+  </div>
+</section>
+
+<section id="s2">
+  <h2><span class="num">二</span> / Scope</h2>
+  <h3>范围收窄：从「大多数 Agent」到「可验收的 MVP」</h3>
+
+  <h4 id="s2-1">2.1 场景能力矩阵</h4>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:210px">场景</th><th style="width:100px">MVP 范围</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">单轮任务提示词（写报告/做表格/分析数据）</td><td><span class="chip c-ok">P0a 支持</span></td><td>核心场景，IR 全字段覆盖。</td></tr>
+      <tr><td class="hd">系统提示词 / 角色设定（含多轮行为规范）</td><td><span class="chip c-ok">P0b 支持</span></td><td>迭代模式主战场：种子反解 + 回归保护。</td></tr>
+      <tr><td class="hd">既有提示词的结构化改写（补/删/改）</td><td><span class="chip c-ok">P0b 支持</span></td><td>依赖最小版本台账。</td></tr>
+      <tr><td class="hd">会话内旁路改进</td><td><span class="chip c-fix">P1（门槛后）</span></td><td>需先通过 §7 的事务化改造与并发测试。</td></tr>
+      <tr><td class="hd">多消息角色编排（system/user/assistant 序列）</td><td><span class="chip c-part">非目标</span></td><td>IR v2 预留 <code>message_plan</code> 扩展位，不实现。</td></tr>
+      <tr><td class="hd">工具调用 schema / 权限 / 停止条件</td><td><span class="chip c-part">非目标</span></td><td>属广义 Agent 编排，超出提示词生成边界。</td></tr>
+      <tr><td class="hd">检索增强 / 记忆注入 / 子 Agent 编排</td><td><span class="chip c-part">非目标</span></td><td>上下文装配策略属宿主 Agent 的职责（参照第一份报告的六层堆栈），本系统只产出其中「任务层」的内容。</td></tr>
+      <tr><td class="hd">文生图等非文本提示词</td><td><span class="chip c-part">非目标</span></td><td>评测信号完全不同，独立立项。</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>这张表同时回答审查意见 5：v0.1 的 IR 覆盖不了广义 Agent 场景是事实。修订后的定位是<strong>「面向文本与系统提示词的生成-迭代-评测系统」</strong>，Agent 编排能力通过 <code>schema_version</code> 预留扩展位，按场景需求逐个立项，而不是现在硬做一半。</p>
+
+  <h4 id="s2-2">2.2 显式非目标清单（防止范围回涨）</h4>
+  <ul class="tight">
+    <li>不承诺「任意目标模型」——只承诺「模型卡登记在册的受支持模型清单」，新增模型需登记 + 基准子集实测后才宣称支持。</li>
+    <li>不承诺自动删除任何安全、合规、硬格式约束（见 §6 保护类）。</li>
+    <li>不承诺在无版本基准的场景下给出「效果提升」结论。</li>
+    <li>不承诺 P5 权重蒸馏的必然发生——它由 ROI 触发，不由数据量触发（§8.3）。</li>
+  </ul>
+</section>
+
+<section id="s3">
+  <h2><span class="num">三</span> / Core Objects</h2>
+  <h3>核心对象重构：一变三</h3>
+
+  <figure>
+    <svg viewBox="0 0 680 320" role="img" aria-label="三对象证据链">
+      <defs>
+        <marker id="fa" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" fill="#9aa4b2"/>
+        </marker>
+      </defs>
+      <!-- IR -->
+      <rect x="14" y="40" width="188" height="180" rx="10" fill="#eaeffc" stroke="#c3d1f2"/>
+      <text x="108" y="66" text-anchor="middle" font-size="14" font-weight="700" fill="#2b54c4">PromptIR</text>
+      <text x="108" y="84" text-anchor="middle" font-size="10.5" fill="#3d4a66">结构化意图（唯一事实源）</text>
+      <text x="30" y="110" font-size="11" fill="#3d4a66">· slots（全部语义内容）</text>
+      <text x="30" y="130" font-size="11" fill="#3d4a66">· freeform_extras（少数例外）</text>
+      <text x="30" y="150" font-size="11" fill="#3d4a66">· provenance / protect_class</text>
+      <text x="30" y="170" font-size="11" fill="#3d4a66">· schema_version / checksum</text>
+      <text x="30" y="196" font-size="10.5" fill="#2b54c4" font-weight="700">证据①：结构合法性（规则，免费）</text>
+      <text x="30" y="212" font-size="10" fill="#67707e">能证明：槽位齐、无自相矛盾、合预算</text>
+
+      <!-- Rendered -->
+      <rect x="246" y="40" width="188" height="180" rx="10" fill="#e6f4f1" stroke="#b6ddd6"/>
+      <text x="340" y="66" text-anchor="middle" font-size="14" font-weight="700" fill="#0d7268">RenderedPrompt[]</text>
+      <text x="340" y="84" text-anchor="middle" font-size="10.5" fill="#2c5f59">同一 IR 的多个投影</text>
+      <text x="262" y="110" font-size="11" fill="#2c5f59">· model_id + 模型版本快照</text>
+      <text x="262" y="130" font-size="11" fill="#2c5f59">· renderer_version</text>
+      <text x="262" y="150" font-size="11" fill="#2c5f59">· 解码参数（温度等）</text>
+      <text x="262" y="170" font-size="11" fill="#2c5f59">· ir_checksum（回指来源）</text>
+      <text x="262" y="196" font-size="10.5" fill="#0d7268" font-weight="700">证据②：表达质量（裁判 rubric）</text>
+      <text x="262" y="212" font-size="10" fill="#2c5f59">能证明：哪个版本表达更好（相对序）</text>
+
+      <!-- EvalRun -->
+      <rect x="478" y="40" width="188" height="180" rx="10" fill="#fdf3e3" stroke="#f0dcb8"/>
+      <text x="572" y="66" text-anchor="middle" font-size="14" font-weight="700" fill="#a55a08">EvalRun[]</text>
+      <text x="572" y="84" text-anchor="middle" font-size="10.5" fill="#7a4a08">目标模型上的执行记录</text>
+      <text x="494" y="110" font-size="11" fill="#7a4a08">· rendered_id 回指投影</text>
+      <text x="494" y="130" font-size="11" fill="#7a4a08">· 用例集版本 + 重复次数</text>
+      <text x="494" y="150" font-size="11" fill="#7a4a08">· 指标均值 ± 置信区间</text>
+      <text x="494" y="170" font-size="11" fill="#7a4a08">· 失败样本与归因标注</text>
+      <text x="494" y="196" font-size="10.5" fill="#a55a08" font-weight="700">证据③：执行效果（硬门 + 指标）</text>
+      <text x="494" y="212" font-size="10" fill="#7a4a08">唯一能证明「适配该模型」的证据</text>
+
+      <!-- arrows -->
+      <line x1="202" y1="90" x2="240" y2="90" stroke="#9aa4b2" stroke-width="1.5" marker-end="url(#fa)"/>
+      <line x1="434" y1="90" x2="472" y2="90" stroke="#9aa4b2" stroke-width="1.5" marker-end="url(#fa)"/>
+      <text x="222" y="78" font-size="9.5" fill="#8b95a3">COMPILE</text>
+      <text x="454" y="78" font-size="9.5" fill="#8b95a3">EXECUTE</text>
+
+      <!-- bottom rules -->
+      <rect x="14" y="248" width="652" height="52" rx="8" fill="#fbeceb" stroke="#eec7c9"/>
+      <text x="340" y="272" text-anchor="middle" font-size="12.5" font-weight="700" fill="#a8323a">结论强度随证据层级递增，不可跨级引用</text>
+      <text x="340" y="291" text-anchor="middle" font-size="10.5" fill="#a8323a">「渲染过 L1」≠「适配」；「裁判偏好」≠「效果更好」；缓存键 = ir_checksum + 模型快照 + 渲染器版本 + 解码参数</text>
+    </svg>
+    <figcaption>图 1　三对象证据链（响应审查意见 1、3）。审查正确指出 v0.1 的 rendered 单对象与「评估都在 IR 层」的表述构成歧义；v0.2 把渲染改为数组并强制记录模型快照与渲染器版本，使任何一次评测都可精确复现。</figcaption>
+  </figure>
+
+  <h4 id="s3-1">3.1 PromptIR v2：单一事实源</h4>
+  <p class="lead">v0.1 让 slots 与 instructions 并存，审查指出这是双事实源。v0.2 的裁决：<strong>slots 是唯一事实源</strong>，所有语义内容进槽位；只有确实无法结构化的表达进 <code>freeform_extras</code>；「指令清单」不再存储，改为<strong>编译期派生物</strong>（每个派生单元的 ID 由其 loc 确定性生成，天然可重放）。</p>
+
+  <pre><code>IRv2 = {
+  schema_version: "2",                      // 契约版本，未来扩展（message_plan 等）经版本升级进入
+  ir_id, version, parent_ir_version, lineage_id,   // lineage：同一谱系，供数据切分用（§8.2）
+  checksum,                                 // Patch 前置校验用（CAS）
+  created: { by: "zero|iterate|online", strategy_id, at, operator },
+  slots: {                                  // ★ 唯一事实源
+    role,                                   // 角色
+    goal:      { outcome, done_criteria[], non_goals[] },
+    inputs:    [ { ref, type, note, trust: "user|derived" } ],
+    output:    { format, schema?, length_budget },
+    constraints: { must[], must_not[], style[] },
+    examples:  [ { input, expected } ],
+    workflow:  [ "…" ],
+    feedback_protocol: { on_fail_report: "现象|复现|已尝试|影响面" }   // 新槽位：响应"反馈诊断"维度
+  },
+  freeform_extras: [ { id, text, provenance, protect_class? } ],       // 少数无法结构化的表达
+  provenance_map: { "<loc>": { source: "user_turn:3 | seed | derived:rule7 | gen:strategy2" } },
+  protect_registry: [ { loc, class: "safety|hard_format|user_pinned", by, at, reason } ],
+  // 注意：不再有 instructions[] / rendered 字段——
+  // 指令清单 = 编译期派生；渲染结果 = RenderedPrompt[]（独立对象）
+}</code></pre>
+
+  <p>三个关键设计：</p>
+  <ul class="tight">
+    <li><strong>统一寻址 <code>loc</code></strong>：形如 <code>slots.constraints.must[0]</code> 或 <code>freeform_extras[F-3]</code>。v0.1 的 ADD 用 slot、DELETE 用 ins_id 的不对称寻址被废除——所有编辑操作使用同一种 loc，<code>role / goal / output / examples / workflow</code> 全部可编辑，消除覆盖盲区。</li>
+    <li><strong><code>protect_registry</code> 保护类</strong>：任何 loc 可被登记为 safety / hard_format / user_pinned 三类保护，进入 §6 的删除豁免。安全约束可以由生成器合理补充（响应审查意见 4：未提及 ≠ 无必要），但一旦登记为保护类就退出自动删除范围。</li>
+    <li><strong><code>lineage_id</code> 血缘</strong>：为 §8.2 的数据切分服务——同一谱系的所有版本永不跨越训练/测试边界。</li>
+  </ul>
+
+  <h4 id="s3-2">3.2 RenderedPrompt 与 EvalRun</h4>
+  <pre><code>RenderedPrompt = {
+  rendered_id, ir_id, ir_checksum,
+  model: { id, version_snapshot },     // 模型版本快照：供应商升级即失效，须重测
+  renderer_version, decode: { temperature, max_tokens },
+  text, instruction_manifest[]        // 派生指令清单（带 loc 派生 ID），供消融与归因
+}
+
+EvalRun = {
+  run_id, rendered_id,
+  bench: { id, version, case_ids[] },  // 用例集版本化：结果可比较的前提
+  repeats: 3, metrics: { name: { mean, ci95 } },
+  hard_gates: { item: pass|fail },
+  failures: [ { case_id, phenomenon, loc_hint } ]   // 失败样本带可定位现象
+}</code></pre>
+  <p>缓存键设计（响应审查意见 3 的「缓存错用」）：<code>sha256(ir_checksum + model_snapshot + renderer_version + decode)</code>。任何一个分量变化（包括供应商静默升级模型）都会使缓存失效，杜绝拿旧渲染结果冒充新评测。</p>
+</section>
+
+<section id="s4">
+  <h2><span class="num">四</span> / Patch Contract v2</h2>
+  <h3>Patch 契约 v2：可校验、可重放、可事务</h3>
+
+  <pre><code>Patch = {
+  schema_version: "2",
+  base: { ir_id, version, checksum },        // 应用前 CAS 校验：checksum 不符 → 拒绝并报告基线漂移
+  idempotency_key,                            // 同键重放 → 返回首次结果，不重复应用
+  created: { by, at, reason, evidence_refs[] },// evidence_refs 指向 EvalRun/run_id 或会话轮次
+  ops: [
+    { op: "ADD",     loc: "slots.constraints.must", content: "…", provenance: "user_turn:5" },
+    { op: "DELETE",  loc: "slots.constraints.style[2]", evidence_refs: ["run:881"] },
+    { op: "REWRITE", loc: "slots.goal.outcome", content: "…", reason: "动词+对象+完成态重写" },
+    { op: "MOVE",    loc: "freeform_extras[F-1]", to: "head" }   // 对抗中段遗忘：移位而非删改
+  ],
+  transaction: "all_or_nothing"              // 任一 loc 校验失败 → 整包拒绝，零部分应用
+}
+// COMPILE 不再是 Patch 操作——渲染是独立命令，产出 RenderedPrompt，天然可由缓存键重建</code></pre>
+
+  <p>契约要点逐条对应审查意见 3：</p>
+  <ul class="tight">
+    <li><strong>操作完备性</strong>：四种 op × 统一 loc，覆盖包括 role、goal、output、examples、workflow 在内的全部字段；不再存在「ADD 定位不到 goal」的盲区。</li>
+    <li><strong>前置校验与基线漂移</strong>：base.checksum 是 CAS 语义。迭代模式下若父版本已被其他补丁更新，本补丁拒绝应用并提示重新基于新基线生成——这同时是 §7 在线模式并发安全的基石。</li>
+    <li><strong>幂等与重放</strong>：应用器是确定性重放器（同一 Patch 对同一 base 必得同一结果），idempotency_key 保证任务重复投递不产生双重应用。</li>
+    <li><strong>事务边界</strong>：all-or-nothing。任何 loc 解析失败整包拒绝，不产生半应用的中间态——直接消灭「补丁误应用」类别。</li>
+    <li><strong>每条 op 带证据引用</strong>：REWRITE 带理由、DELETE 必带 evidence_refs（指向具体 EvalRun 或消融记录），无证据的 DELETE 在应用层直接拒绝——把「凭感觉删」从协议上排除。</li>
+  </ul>
+
+  <div class="note">
+    <div class="tag">Deliverable</div>
+    本节将连同 §5、§9 一起，落成 P0-前置的三份规范文档（§10.1）。规范文档须附<strong>JSON Schema + 合法/非法 Patch 用例集 + 确定性应用器</strong>，用例集中刻意包含：base 漂移、loc 越界、重复投递、保护类 DELETE、空 ops——五类非法样本都必须被应用器拒绝。
+  </div>
+</section>
+
+<section id="s5">
+  <h2><span class="num">五</span> / Evaluation v2</h2>
+  <h3>评估体系 v2：三层证据、人工锚点、诚实的统计</h3>
+
+  <h4 id="s5-1">5.1 三层证据与结论边界</h4>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:120px">层级</th><th>手段</th><th>能下的结论</th><th style="width:170px">不能下的结论</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">L1 结构检查</td><td>规则引擎：槽位完整性、矛盾检测、保护类冲突、token 预算、loc 合法性</td><td>结构合法、无自相矛盾、可渲染</td><td>任何关于「质量」或「适配」的结论</td></tr>
+      <tr><td class="hd">L2 表达评估</td><td>裁判按<strong>已校准 rubric</strong> 成对裁决（交换顺序双裁）</td><td>候选间的相对优劣序（含平局）</td><td>绝对可用性；跨任务/跨模型推广</td></tr>
+      <tr><td class="hd">L3 执行验证</td><td>目标模型 × 版本化用例集 × 重复 ≥3，硬门 + 指标 ± CI95</td><td>「适配该模型（该版本）」；回归判定</td><td>对未测模型/未来版本的承诺</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4 id="s5-2">5.2 Rubric 校准：打断自我强化环</h4>
+  <p>审查意见 2 指出的循环是致命的：M1 误解 → rubric 错 → 裁判稳定选错候选 → 学习层把错误固化。v0.2 在环上<strong>插入一个不可绕过的人工锚点</strong>，并给 rubric 自身装上回归机制：</p>
+  <ol class="steps">
+    <li><b>起草</b>：rubric v1 仍由 M1 从意图框架自动起草（这是效率来源，保留）。</li>
+    <li><b>用户确认（t0 锚点）</b>：v1 <strong>必须经用户逐项确认或修订后才生效</strong>，未确认的 rubric 不允许进入任何裁决。用户在这一步的修正直接覆盖 M1 的误解。</li>
+    <li><b>版本化</b>：rubric 每次变更升版本；所有历史裁决记录其 rubric 版本，跨 rubric 版本的分数不可直接比较。</li>
+    <li><b>周期抽检</b>：按会话抽样（如 5%）人工复核裁决结论，报告一致率；一致率低于阈值触发 rubric 修订流程。</li>
+    <li><b>冲突即升级</b>：用户实际满意度和裁判结论系统性冲突时，结论不是「用户错了」，而是 rubric 缺项 → 走修订流程并回归验证。</li>
+  </ol>
+
+  <h4 id="s5-3">5.3 统计规则、成本公式与降级路径</h4>
+  <p>修正 v0.1 的调用量错误（审查意见 8），并补齐全部未定义情形：</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:150px">环节（从零，N=4）</th><th>公式</th><th>调用量</th><th>备注</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">意图抽取 + 澄清</td><td>1 + 澄清轮（≤2）</td><td>1–3</td><td>每轮 ≤3 问</td></tr>
+      <tr><td class="hd">多策略生成</td><td>N</td><td>4</td><td>四策略并行</td></tr>
+      <tr><td class="hd">L1 静态</td><td>0</td><td>0</td><td>纯规则</td></tr>
+      <tr><td class="hd">L2 全配对</td><td>N(N−1)/2 对 × 2（交换双裁）= <strong>N(N−1)</strong></td><td><strong>12</strong></td><td>v0.1 的「2N」有误，予以修正</td></tr>
+      <tr><td class="hd">双裁不一致重裁</td><td>每不一致对 +1</td><td>0–6</td><td>重裁仍不一致 → 记平局</td></tr>
+      <tr><td class="hd">L3 执行（深度模式）</td><td>N × 用例数(默认5) × repeats(3)</td><td>60</td><td>仅在用户开启时发生</td></tr>
+      <tr><td class="hd">合计</td><td colspan="3">常规模式 ≈ 17–25 次调用；深度模式 +60。N&gt;6 时改瑞士轮（O(N log N)），预算封顶可配置</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p><strong>未定义情形的裁决规则</strong>（全部补齐）：</p>
+  <ul class="tight">
+    <li><strong>平局</strong>：积分制（胜 1 / 平 0.5），按积分排名；并列即并列交付，不强行分出高下。</li>
+    <li><strong>非传递性</strong>（A&gt;B&gt;C&gt;A）：允许存在，报告环的存在作为证据质量警告，不掩盖。</li>
+    <li><strong>全候选不过硬门</strong>：宁缺毋滥——<em>不产出冠军</em>，返回前二名及失败报告，向用户呈现三个选项（放宽验收 / 人工修订 / 放弃本次生成），禁止系统「矮子里拔将军」。</li>
+    <li><strong>小样本不稳定</strong>：L3 用例数 &lt; 5 时不输出排名结论，只输出「证据不足，需增补用例」。</li>
+    <li><strong>重复与置信区间</strong>：L3 每用例 repeats≥3（受控温度），报告 mean ± CI95；两组 CI 重叠即记「无显著差异」，不宣称提升。</li>
+  </ul>
+
+  <p><strong>降级路径</strong>（响应审查意见 12 的运维缺口）：生成器限流 → 排队退避 + 策略数 N 降为 2；裁判不可用 → 跳过 L2、直接 L3 或转人工；非法 JSON → 一次修复重试，再失败则该候选弃赛；无候选存活 → 走「全败」流程；预算耗尽 → 返回已完成层级的最优结果并<strong>明确标注证据层级不足</strong>（如「仅 L1 通过」）——绝不冒充完整结论。</p>
+</section>
+
+<section id="s6">
+  <h2><span class="num">六</span> / Deletion Logic v2</h2>
+  <h3>删除判定 v2：证据阶梯取代 provenance 判定</h3>
+
+  <div class="key rose">
+    <b>修订核心：</b>「用户未提及」从<b>删除依据</b>降级为<b>筛查信号</b>。provenance = <code>gen:</code> 只提高某条指令进入复核队列的优先级，<b>删除的唯一依据是证据阶梯走完</b>。审查意见 4 的两种误伤（误删必要的安全/隐含步骤；无法识别真正的凭空添加）由此同时规避——前者由保护类豁免，后者由证据门槛拦截。
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 680 240" role="img" aria-label="删除判定的证据阶梯">
+      <g font-size="11.5" font-weight="700">
+        <rect x="14"  y="24"  width="652" height="40" rx="6" fill="#eaeffc" stroke="#c3d1f2"/>
+        <text x="30" y="49" fill="#2b54c4">① 筛查（零成本）</text>
+        <text x="200" y="49" fill="#545e6d" font-weight="400">语义去重命中 / 重复表达 / provenance=gen 且零互动 —— 仅意味着「进入复核队列」，不构成任何删除</text>
+        <rect x="14"  y="74"  width="652" height="40" rx="6" fill="#e6f4f1" stroke="#b6ddd6"/>
+        <text x="30" y="99" fill="#0d7268">② 消融（重复 ≥3 + 组合消融）</text>
+        <text x="270" y="99" fill="#545e6d" font-weight="400">单删与成对删都要测——检测指令间补偿作用；同时跑对抗用例集覆盖低频高危场景</text>
+        <rect x="14"  y="124" width="652" height="40" rx="6" fill="#fdf3e3" stroke="#f0dcb8"/>
+        <text x="30" y="149" fill="#a55a08">③ 保护类豁免</text>
+        <text x="180" y="149" fill="#545e6d" font-weight="400">safety / hard_format / user_pinned 三类直接退出自动删除，无论消融结果如何</text>
+        <rect x="14"  y="174" width="652" height="40" rx="6" fill="#fbeceb" stroke="#eec7c9"/>
+        <text x="30" y="199" fill="#a8323a">④ 人工裁决</text>
+        <text x="150" y="199" fill="#545e6d" font-weight="400">降级为 retired 状态（可恢复），须人工确认；每个删除附 evidence_refs，血缘可追、可撤销</text>
+      </g>
+    </svg>
+    <figcaption>图 2　删除判定的四级证据阶梯（响应审查意见 4、9）。终点是「降级候选 + 人工确认」，自动删除被彻底移除出协议。</figcaption>
+  </figure>
+
+  <p>「冗余」与「未提及」由此获得不同的定义与不同的处置：</p>
+  <ul class="tight">
+    <li><strong>冗余</strong>：语义等价且消融零增益（含组合消融）→ 可进入降级候选；若两条指令互为安全冗余（如同一禁令的双表述），登记为保护类而非删除——审查意见 9 关于「重复约束的安全价值」被采纳为规则。</li>
+    <li><strong>未提及</strong>：provenance 筛查 + 证据走完 + 不属保护类 → 才能作为降级候选进入人工确认。生成器合理补充的必要内容（安全、格式完整性、由目标推导的隐含步骤）在 protect_registry 登记后自然豁免。</li>
+  </ul>
+</section>
+
+<section id="s7">
+  <h2><span class="num">七</span> / Online Mode v2</h2>
+  <h3>会话内改进 v2：把异步补丁变成事务</h3>
+  <p>审查意见 7 判定 v0.1 的在线模式「暂不具备上线条件」，v0.2 予以接受并补齐事务语义，同时把 P1 的上线条件改为「先通过并发与乱序测试」：</p>
+
+  <ol class="steps">
+    <li><b>会话代次（session_epoch）</b>：任务切换、用户手动编辑、补丁应用，三者都使 epoch +1。所有在途补丁携带生成时的 epoch。</li>
+    <li><b>CAS 应用</b>：应用时校验 <code>epoch + base.ir_checksum</code>，任一不符 → 补丁作废、入重排队列（基于新状态重新生成，不是重放旧补丁）。</li>
+    <li><b>取消机制</b>：用户切换任务 → 该任务名下所有在途补丁标记 cancelled；补丁生成任务本身可取消、可去重（idempotency_key）。</li>
+    <li><b>应用策略 v2</b>：<strong>默认仅人工确认应用</strong>。自动应用从配置中移除，仅作为「未来研究项」保留——且即便将来启用，门槛也是「连续两次独立 EvalRun 正向 + rubric 无冲突」，而非 v0.1 的「连续两轮同一信号」（审查正确指出后者不是高置信证据）。</li>
+    <li><b>效果归因 v2（废除单轮回滚）</b>：应用后进入归因窗口（≥ k 轮）；只有「连续 m 次出现<strong>同一失败签名</strong>」才判定补丁无效，执行带滞回的回滚。单轮波动（模型随机性、上下文变化）不再触发回滚——消灭应用-回滚振荡。</li>
+    <li><b>成本表述修正</b>：扫描未命中时为「低成本」而非「零成本」：规则引擎、抽取器与队列调度本身仍有计算与运维开销，计入预算模型。</li>
+  </ol>
+
+  <p>P1 出口判据（可执行版）：并发会话注入测试、任务切换竞态、重复投递、乱序到达四类用例全部通过；过期补丁作废率 100%；上线后误回滚 = 0（观察窗 2 周，分母为已应用补丁数）。</p>
+</section>
+
+<section id="s8">
+  <h2><span class="num">八</span> / Learning Data v2</h2>
+  <h3>自学习数据治理：按弱监督处理</h3>
+
+  <div class="key violet">
+    <b>定性修正（响应审查意见 10）：</b>裁决日志是<b>裁判生成的弱标签</b>，不是免费的真实答案。它可用，但必须经过弱监督数据的全套治理：同上下文构造、去重、质量过滤、标签抽检、防泄漏切分、授权与可撤销。
+  </div>
+
+  <h4>8.1 偏好对（DPO 燃料）构造规则</h4>
+  <ul class="tight">
+    <li><strong>同上下文约束</strong>：chosen / rejected 必须来自同一输入上下文（同对话前缀 + 同 IR 谱系 + 同目标模型 + 同渲染与解码配置），唯一差异是候选本身。不满足则弃用。</li>
+    <li><strong>必须携带谱系标签</strong>：每对记录 lineage_id、rubric 版本、裁判 ID 与理由，供过滤与审计。</li>
+    <li><strong>去重与质量过滤</strong>：语义哈希去重；裁判置信低、双裁不一致、硬门未过的样本全部出队。</li>
+    <li><strong>标签准确率抽检</strong>：每批次人工抽检 ≥3%，报告与人工判断的一致率；低于阈值则该批次降权或弃用。</li>
+  </ul>
+
+  <h4>8.2 防泄漏切分（响应「版本近邻泄漏」）</h4>
+  <p>切分单位不是「样本」而是<strong>血缘（lineage）</strong>：同一 IR 谱系的全部版本、其全部裁决记录，只出现在训练集或测试集之一。切分同时按租户 × 任务类型 × 会话 × 时间做分层，防止「同一用户同一任务的近亲版本」分居两个集合。测试集外另设一份<strong>从未参与任何优化的冻结金标</strong>，作为所有晋升结论的唯一仲裁。</p>
+
+  <h4>8.3 P5 触发条件重写（响应审查意见 P2-2）</h4>
+  <p>「偏好对过万」从充分条件降级为必要条件之一。启动 P5 需同时满足三条：① P4 已稳定运行且遇到<strong>明确的成本/时延/质量瓶颈</strong>（而非排期到了）；② 有独立测试集证明小模型非劣于继续调用强模型（预注册非劣效边界 ε）；③ 完整 ROI 评估（含训练与维护成本）。三条不齐，P5 不启动——数据由阶段门槛驱动，排期只是预期。</p>
+</section>
+
+<section id="s9">
+  <h2><span class="num">九</span> / Security &amp; Tenancy</h2>
+  <h3>安全与多租户治理：从原则到威胁模型</h3>
+
+  <h4>9.1 威胁模型（v0.1 缺失，本次补齐）</h4>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:180px">输入源</th><th>风险</th><th>控制措施</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">用户对话文本</td><td>指令注入（劫持生成逻辑）</td><td>不可信标记 + 数据区隔离；M1 抽取只进结构字段；渲染时用户原文永远位于带边界的数据区</td></tr>
+      <tr><td class="hd">上传文件 / 截图 OCR</td><td>同上 + 存储型注入</td><td>入库时保留不可信标记，随检索结果传播；引用处显式转义与边界包裹</td></tr>
+      <tr><td class="hd">资产库检索结果（范例 IR）</td><td>跨租户泄漏 / 被污染的范例误导生成</td><td>检索按租户硬隔离；范例进入生成上下文前过 L1 合法性 + 不可信包裹；派生策略卡记录血缘以便撤销传播</td></tr>
+      <tr><td class="hd">目标模型输出</td><td>输出中夹带指令，回灌污染</td><td>EvalRun 失败样本按数据存储，不经指令区；进入反思流程前过注入检测规则</td></tr>
+      <tr><td class="hd">裁判解释文本</td><td>作为弱标签进入训练 → 投毒</td><td>训练数据管道独立过滤（§8.1 抽检）；投毒样本可按血缘整批撤销</td></tr>
+      <tr><td class="hd">M7 反思文本 / 策略卡</td><td>存储型注入的二次传播（污染策略库即污染所有后续生成）</td><td>策略卡晋升前人工审核（保留 v0.1 的闸门，且范围扩大到一切派生资产）</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>表述修正：「<strong>杜绝注入</strong>」全面改为「<strong>降低与检测</strong>」——承认指令区/数据区分离只能降低风险；配套手段是检测（注入基准用例集纳入回归）与止血（血缘级撤销传播）。存储型注入测试用例进入 P0b 的回归集。</p>
+
+  <h4>9.2 租户与数据授权</h4>
+  <ul class="tight">
+    <li>隔离边界从「策略池」扩展到全部派生物：检索索引、反思笔记、策略卡、偏好对、渲染缓存，全部按租户硬隔离，并记录血缘以支持删除传播。</li>
+    <li>训练 opt-in：任何用户数据进入自训练管道前需要明确授权；未授权数据只产生会话内效果（L0），不进入跨会话沉淀（L1+）。</li>
+    <li>保留期限与删除：数据带 TTL；删除请求沿血缘传播到策略卡、示例库与训练集（能从训练产物中撤销的粒度以血缘为单位）。</li>
+    <li>PII：入库前扫描与脱敏；人工抽检覆盖 PII 泄漏类别。</li>
+    <li>D5 撤回：v0.1 称多租户设计「成本几乎相同」缺乏依据，改为「设计按多租户、实现从单租户起步，隔离成本待实测后重新评估」。</li>
+  </ul>
+</section>
+
+<section id="s10">
+  <h2><span class="num">十</span> / Roadmap v2</h2>
+  <h3>阶段计划 v2：前置规范 → P0a → P0b → 门槛驱动</h3>
+
+  <h4 id="s10-1">10.1 P0-前置：三份规范（先行产物，先于任何代码）</h4>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:190px">规范</th><th>内容骨架</th><th>验收产物</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="hd">① IR/Patch 规范</td>
+        <td>§3 + §4 的正式化：JSON Schema、loc 文法、CAS/幂等/事务语义、保护类登记规则、版本台账格式（append-only JSONL）</td>
+        <td>Schema 文件 + 合法/非法用例集 + 确定性应用器（含 §4 列出的五类非法样本全部被拒）</td>
+      </tr>
+      <tr>
+        <td class="hd">② 评测与基准规范</td>
+        <td>§5 的正式化：三层证据定义、rubric 校准流程、成对/锦标赛算法与平局规则、重复与 CI 口径、预算公式、降级路径、基准集构建（金标 + 对抗 + 回归三层）</td>
+        <td>版本化基准 v0（≥30 任务金标 + 对抗用例 + 每迭代场景回归子集）+ 评测运行记录模板</td>
+      </tr>
+      <tr>
+        <td class="hd">③ 安全与租户治理规范</td>
+        <td>§9 的正式化：威胁模型、不可信数据标记与传播规则、隔离矩阵、训练 opt-in、TTL 与删除传播、审计事件清单</td>
+        <td>威胁模型文档 + 注入基准用例 + 租户隔离测试方案</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4 id="s10-2">10.2 重排后的阶段与可执行验收口径</h4>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:104px">阶段</th><th>范围</th><th>验收口径（含定义与统计）</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="hd">P0-前置</td>
+        <td>三份规范 + 基准 v0 + 模型选型实测（D2 依赖此项）</td>
+        <td>三份规范评审通过；基准 v0 完成 30 任务金标与标注一致率报告</td>
+      </tr>
+      <tr>
+        <td class="hd">P0a 从零生成</td>
+        <td>M1 + M4 + L1/L2 + IR v2 + 最小渲染（1 张模型卡）</td>
+        <td><strong>冒烟指标</strong>（定位为原型信号，非系统有效性证明）：30 个基准任务上，「可用」= 硬门全过 + 3 名评审按已校准 rubric 独立评分中位数 ≥ 4/5，达成率报告为点估计 + 二项 CI，目标区间待基准完成后预注册</td>
+      </tr>
+      <tr>
+        <td class="hd">P0b 迭代</td>
+        <td>种子反解 + Patch 应用器 + 版本台账 + 回归保护</td>
+        <td>20 个种子场景：回归定义 = EvalRun 指标下降 &gt; 预注册 ε（按任务类型定）；要求零未解释回归；存储型注入用例全过</td>
+      </tr>
+      <tr>
+        <td class="hd">P1 在线改进</td>
+        <td>§7 全部事务机制</td>
+        <td>并发/切换/重复投递/乱序四类测试全过；采纳率分母 = 建议总数，观察窗 2 周；误伤 = 应用后 EvalRun 显著下降且经人工确认为非噪声，目标 &lt; 5%；误回滚 = 0</td>
+      </tr>
+      <tr>
+        <td class="hd">P2 策略学习</td>
+        <td>L0 + L1 策略卡 + 弱标签管道</td>
+        <td>晋升统计口径：跨会话增益用 Wilcoxon 符号秩（α=0.05，预注册）；策略卡按血缘切分测试；产出数据卡</td>
+      </tr>
+      <tr>
+        <td class="hd">P3 元进化</td>
+        <td>L2 冠军/挑战者</td>
+        <td>挑战者在冻结金标 + 回归集上双重胜出才晋升；每次晋升附完整证据链</td>
+      </tr>
+      <tr>
+        <td class="hd">P5 权重蒸馏</td>
+        <td>仅当 §8.3 三条件同时满足</td>
+        <td>非劣效检验（预注册 ε）+ 影子流量 ≥ 2 周 + 人工抽检 + ROI 报告</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <p>P1–P5 的排期列保留为「预期顺序」而非承诺；任何阶段进入下一阶段的唯一依据是其门槛产物齐备——即审查结论「由数据和阶段门槛驱动，而不是由预定排期驱动」的落地。</p>
+</section>
+
+<section id="s11">
+  <h2><span class="num">十一</span> / Claims &amp; Open Issues</h2>
+  <h3>表述修正、遗留问题与下一步</h3>
+
+  <h4>11.1 对外表述修正表</h4>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:260px">v0.1 表述</th><th>v0.2 修正</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">「所有生成、改进、评估、学习都发生在 IR 层面」</td><td>「生成与结构改进发生在 IR 层面；表达评估针对 RenderedPrompt；效果结论只能来自 EvalRun」</td></tr>
+      <tr><td class="hd">「可适配大多数 AI Agent 场景」</td><td>「面向文本与系统提示词的生成-迭代-评测系统；Agent 编排为后续立项范围」（§2 能力矩阵）</td></tr>
+      <tr><td class="hd">「任意目标模型」</td><td>「模型卡登记且基准子集实测通过的受支持模型清单」</td></tr>
+      <tr><td class="hd">「杜绝用户内容劫持生成逻辑」</td><td>「降低与检测注入：不可信标记、分区隔离、注入基准回归、血缘级撤销」</td></tr>
+      <tr><td class="hd">「裁决日志天然是零成本训练数据」</td><td>「裁判弱标签，按弱监督全流程治理后可用」（§8）</td></tr>
+      <tr><td class="hd">「偏好对过万即可启动 P5」</td><td>「过万只是必要条件；启动需瓶颈证明 + 非劣效证据 + ROI 三条件」（§8.3）</td></tr>
+      <tr><td class="hd">「每轮扫描不命中即零额外成本」</td><td>「低成本但非零：规则、抽取与队列调度计入预算」</td></tr>
+      <tr><td class="hd">「P0 可用率 ≥ 70%」</td><td>「冒烟指标：操作性定义 + 点估计 + 二项置信区间，定位为原型信号」（§10.2）</td></tr>
+      <tr><td class="hd">「多租户设计、单租户部署，成本几乎相同」</td><td>「隔离成本待实测后评估」</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4>11.2 遗留开放问题（审查未覆盖、v0.2 仍未解决）</h4>
+  <ul class="tight">
+    <li><strong>渲染等价性检验的边界</strong>：freeform 内容改写后如何机器验证「语义未漂移」，只有半自动方案（裁判核对 + 抽检），成本未定。</li>
+    <li><strong>裁判异族的现实约束</strong>：若生成器/裁判只能选同族模型（预算或合规原因），需量化自评偏好的补偿策略（标定集 + 偏好纠正项），目前只有方案没有数据。</li>
+    <li><strong>基准金标的可维护性</strong>：30 任务的金标建设约需多少人工时、随模型演进多久腐化一次，需要 P0-前置阶段给出实测。</li>
+    <li><strong>成本与时延预算</strong>：v0.2 给出调用公式，但单价、时延上限与限流参数依赖 D2 模型选型实测，尚不能给出绝对金额。</li>
+  </ul>
+
+  <div class="key">
+    <b>与审查结论的对齐声明：</b>本修订采纳「批准收窄 P0、不承诺 P1–P5 排期」的总决策；最优先补齐的三份工程产物已列为 P0-前置（§10.1）；「能力由数据和阶段门槛驱动」写入阶段规则（§10.2）；所有绝对化表述已按 §11.1 修正。v0.2 与 v0.1 的差异全部可追溯到 12 项审查意见，其中 10 项全盘接受、2 项（意见 4、5）接受核心并以「降级为筛查信号」「收窄为非目标」的方式落地。
+  </div>
+</section>
+
+<footer>
+  <p style="font-size:12px;color:#a8b0bc;">v0.2 修订版 · 2026-10-24 · 本版响应外部审查（12 项意见）对 v0.1 全面修订；v0.1 文档保留未动，便于对照。下一批产物：三份 P0-前置规范（IR/Patch、评测与基准、安全与租户治理）。</p>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自适应提示词生成器 · 系统设计方案 v0.5（主验收重构版）</title>
+<style>
+  :root{
+    --ink:#171a20;--ink-2:#333a45;--muted:#67707e;--faint:#8b95a3;
+    --line:#e4e7ec;--line-2:#eef0f4;--bg:#ffffff;--soft:#f7f8fa;--soft-2:#f1f4f9;
+    --accent:#2b54c4;--accent-soft:#eaeffc;
+    --teal:#0d7268;--teal-soft:#e6f4f1;
+    --amber:#a55a08;--amber-soft:#fdf3e3;
+    --rose:#a8323a;--rose-soft:#fbeceb;
+    --violet:#6d3fb8;--violet-soft:#f1ecfb;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Inter","Segoe UI",system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    font-size:16px;line-height:1.78;letter-spacing:.01em;-webkit-font-smoothing:antialiased;}
+  .wrap{display:grid;grid-template-columns:212px minmax(0,1fr);gap:56px;max-width:1160px;margin:0 auto;padding:0 40px 120px;}
+  .toc{position:sticky;top:0;align-self:start;max-height:100vh;overflow:auto;padding:52px 0 40px;font-size:13px;line-height:1.6;}
+  .toc-title{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:14px;font-weight:600;}
+  .toc a{display:block;color:var(--muted);text-decoration:none;padding:5px 0 5px 12px;border-left:2px solid var(--line-2);transition:.15s;}
+  .toc a:hover{color:var(--accent);border-left-color:var(--accent);}
+  .toc a.lv1{font-weight:600;color:var(--ink-2);margin-top:10px;}
+  .toc a.lv2{padding-left:24px;font-size:12.5px;}
+  header{padding:64px 0 0;}
+  .kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:18px;}
+  h1{font-size:36px;line-height:1.25;letter-spacing:-.02em;font-weight:750;margin:0 0 18px;color:#0e1116;}
+  .sub{font-size:17px;color:var(--muted);line-height:1.75;margin:0 0 26px;max-width:46em;}
+  .meta{display:flex;flex-wrap:wrap;gap:10px;font-size:12.5px;color:var(--faint);padding-bottom:26px;border-bottom:1px solid var(--line);}
+  .meta span{padding:3px 10px;background:var(--soft);border-radius:999px;}
+  section{padding-top:54px;}
+  h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);font-weight:700;margin:0 0 8px;}
+  h3{font-size:26px;line-height:1.35;font-weight:700;letter-spacing:-.01em;margin:0 0 22px;color:#0e1116;padding-bottom:16px;border-bottom:1px solid var(--line);}
+  h4{font-size:18.5px;line-height:1.5;font-weight:700;margin:38px 0 12px;color:#12161d;}
+  h5{font-size:15px;font-weight:700;margin:22px 0 8px;color:var(--ink-2);}
+  p{margin:0 0 15px;}
+  strong{font-weight:650;color:#0f1319;}
+  em{font-style:normal;background:linear-gradient(transparent 62%,#fdf0c8 62%);padding:0 1px;}
+  a{color:var(--accent);}
+  code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:.875em;background:var(--soft-2);padding:1.5px 5px;border-radius:4px;color:#243046;}
+  pre{background:#0f1420;color:#dbe2ee;border-radius:var(--radius);padding:18px 20px;overflow-x:auto;font-size:13px;line-height:1.65;margin:18px 0;}
+  pre code{background:none;padding:0;color:inherit;font-size:inherit;}
+  .lead{font-size:17px;line-height:1.8;color:var(--ink-2);border-left:2px solid var(--accent);padding-left:20px;margin:0 0 24px;}
+  .note{background:var(--soft);border:1px solid var(--line);border-radius:var(--radius);padding:18px 22px;font-size:14.5px;line-height:1.72;color:var(--ink-2);margin:22px 0;}
+  .note .tag{display:inline-block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--faint);margin-bottom:6px;}
+  .key{background:var(--accent-soft);border:1px solid #d3ddf8;border-left:3px solid var(--accent);border-radius:6px;padding:16px 20px;margin:22px 0;font-size:15px;line-height:1.72;color:#1c2a4a;}
+  .key b{color:var(--accent);}
+  .key.rose{background:var(--rose-soft);border-color:#eec7c9;border-left-color:var(--rose);}
+  .key.rose b{color:var(--rose);}
+  .key.violet{background:var(--violet-soft);border-color:#dccff6;border-left-color:var(--violet);}
+  .key.violet b{color:var(--violet);}
+  figure{margin:30px 0;padding:0;}
+  figure svg{display:block;width:100%;height:auto;background:var(--soft);border:1px solid var(--line);border-radius:var(--radius);}
+  figcaption{font-size:12.5px;color:var(--faint);margin-top:9px;line-height:1.6;text-align:center;}
+  .scroll{overflow-x:auto;margin:24px 0;border:1px solid var(--line);border-radius:var(--radius);}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;line-height:1.6;min-width:640px;}
+  th{background:#f4f6f9;text-align:left;font-weight:700;color:var(--ink-2);padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap;font-size:12.8px;}
+  td{padding:10px 14px;border-bottom:1px solid var(--line-2);vertical-align:top;color:var(--ink-2);}
+  tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:#fafbfc;}
+  td.hd{font-weight:650;color:var(--ink);background:#fcfcfd;}
+  ul,ol{margin:0 0 16px;padding-left:1.35em;}
+  li{margin:0 0 7px;}
+  li::marker{color:var(--faint);}
+  .tight li{margin-bottom:4px;}
+  .chip{display:inline-block;font-size:11.5px;padding:2px 9px;border-radius:999px;font-weight:600;margin-right:6px;}
+  .c-ok{background:var(--teal-soft);color:var(--teal);}
+  .c-fix{background:var(--accent-soft);color:var(--accent);}
+  .c-sec{background:var(--amber-soft);color:var(--amber);}
+  .c-rc{background:var(--rose-soft);color:var(--rose);}
+  .steps{counter-reset:s;list-style:none;padding:0;margin:18px 0;}
+  .steps li{counter-increment:s;position:relative;padding-left:38px;margin-bottom:13px;}
+  .steps li::before{content:counter(s);position:absolute;left:0;top:1px;width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:"SFMono-Regular",Consolas,monospace;}
+  .steps b{display:block;margin-bottom:2px;}
+  footer{margin-top:70px;padding-top:28px;border-top:1px solid var(--line);font-size:13px;color:var(--faint);line-height:1.8;}
+  @media (max-width:980px){
+    .wrap{grid-template-columns:1fr;gap:0;padding:0 24px 80px;}
+    .toc{display:none;}
+    h1{font-size:29px;}
+    h3{font-size:21px;}
+    header{padding-top:40px;}
+  }
+  @media print{
+    .toc{display:none;}
+    .wrap{display:block;max-width:none;padding:0;}
+    section,figure{page-break-inside:avoid;}
+    body{font-size:11pt;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav class="toc">
+  <div class="toc-title">目录</div>
+  <a href="#s0" class="lv1">零 · 主目标调整与处置表</a>
+  <a href="#s0-1" class="lv2">决策记录 D-0</a>
+  <a href="#s0-2" class="lv2">逐条落实对照</a>
+  <a href="#s1" class="lv1">一 · 评测体系 v2（五处修改）</a>
+  <a href="#s1-1" class="lv2">1.1 评测单元</a>
+  <a href="#s1-2" class="lv2">1.2 逐模型 Overlay</a>
+  <a href="#s1-3" class="lv2">1.3 逐模型基线与盲评 v2</a>
+  <a href="#s1-4" class="lv2">1.4 三档门禁</a>
+  <a href="#s1-5" class="lv2">1.5 功效与预算</a>
+  <a href="#s2" class="lv1">二 · 契约修复包（7 项）</a>
+  <a href="#s2-1" class="lv2">2.1 引用锚定与双缓存键</a>
+  <a href="#s2-2" class="lv2">2.2 Port 方向与状态去耦</a>
+  <a href="#s2-3" class="lv2">2.3 HTTP/MCP 等价</a>
+  <a href="#s2-4" class="lv2">2.4 幂等与并发 CAS</a>
+  <a href="#s2-5" class="lv2">2.5 授权与建议绑定</a>
+  <a href="#s2-6" class="lv2">2.6 时间模型与事件</a>
+  <a href="#s2-7" class="lv2">2.7 回调安全与数据最小化</a>
+  <a href="#s3" class="lv1">三 · 首批模型清单</a>
+  <a href="#s4" class="lv1">四 · 意图校验与 TCK 增补</a>
+  <a href="#s5" class="lv1">五 · 接入流程 v2（灰度）</a>
+  <a href="#s6" class="lv1">六 · 一致性与阶段映射</a>
+</nav>
+
+<main>
+
+<header>
+  <div class="kicker">System Design · Revision v0.5 · Acceptance Refactor</div>
+  <h1>自适应提示词生成器：系统设计方案 v0.5</h1>
+  <p class="sub">主验收目标重构版：以「各目标模型的实际任务产出」为主验收、逐模型优化与逐模型门禁，提示词文本质量降为辅助指标；同时设计级关闭第四轮复审的 7 项契约缺口（幂等竞态、授权绑定、时间模型、回调安全、Port 方向、绑定等价、引用漂移），并给出首批必须支持的模型清单。</p>
+  <div class="meta">
+    <span>v0.5 主验收重构版</span>
+    <span>五处结构修改</span>
+    <span>7 项契约修复</span>
+    <span>首批模型清单定稿</span>
+    <span>2026-10-24</span>
+  </div>
+</header>
+
+<section id="s0">
+  <h3>零 · 主目标调整与全部意见处置</h3>
+
+  <h4 id="s0-1">0.1 决策记录 D-0（用户确认，本版生效）</h4>
+  <div class="key">
+    <b>主验收目标（修订后）：</b>在声明支持的模型集合上，以<b>各模型的实际任务产出</b>为主验收，通过<b>逐模型优化</b>达到可验证的最佳效果；提示词文本质量仅作辅助指标。<br>
+    <b>「最佳」的可验证定义：</b>固定模型版本、固定任务集、固定运行环境、固定预算四要素下的统计验收结果（预注册主指标 + 区间估计）。<b>不承诺</b>对未来模型、未测任务或不同环境绝对最优。<br>
+    <b>与铁律一的关系：</b>本决策不是新增原则，而是铁律一（提示词没有普适最优，只有针对特定模型的最优解）在验收层的落地——此前「任务层配对比较」的口径反而是铁律一的执行残留。
+  </div>
+
+  <h4 id="s0-2">0.2 逐条落实对照表</h4>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:36px">#</th><th style="width:220px">复审意见</th><th style="width:90px">级别</th><th>处置与落点</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">P0-1</td><td>跨文档引用漂移；渲染缓存与推理缓存口径混淆</td><td><span class="chip c-fix">修复</span></td><td>§2.1：规范引用改为「文档 ID + 条款 ID」锚定表（版本无关）；<b>双缓存键分离</b>——RenderCacheKey（确定性纯函数，可跨环境复用）与 EvalCacheKey（含运行环境分量，禁跨环境/跨模型复用）。</td></tr>
+      <tr><td class="hd">P0-2</td><td>Port 依赖方向含混；TaskState 绑定 M1/M4/M5</td><td><span class="chip c-fix">修复</span></td><td>§2.2：入站 Port（核心实现、适配器调用）/ 出站 Port（外围实现、核心依赖）显式分离；TaskState 阶段枚举与内部模块<b>解耦</b>——API 只承诺枚举值与迁移表（版本化），映射是内部实现细节。</td></tr>
+      <tr><td class="hd">P0-3</td><td>HTTP/MCP 未真正等价（缺 Schema、模型卡、治理读取等）</td><td><span class="chip c-fix">修复</span></td><td>§2.3：能力 × 绑定等价矩阵补全（13 工具 × 9 能力），治理读取、Schema、模型卡全部纳入；TCK 以矩阵逐格执行。</td></tr>
+      <tr><td class="hd">P0-4</td><td>幂等重放语义不完整；CAS 只查提交前；台账与 IR 原子性未定义</td><td><span class="chip c-fix">修复</span></td><td>§2.4：<code>(tenant, connector, op, idempotency_key)</code> 唯一约束 + 载荷哈希；重放返回<b>首次结果原状态码</b>；提交时数据库级原子 CAS；IR 提交 + 幂等记录 + 审计追加 = <b>同一事务</b>。</td></tr>
+      <tr><td class="hd">P0-5</td><td>保护授权未绑定内容；整项 REWRITE 可夹带保护字段；建议应用可被篡改</td><td><span class="chip c-fix">修复</span></td><td>§2.5：授权绑定 patch_hash + base_checksum + 租户 + 单次消费；<b>载荷递归校验</b>（服务端管理字段清单：protect_class/provenance/created/meta 出现在任何替换载荷中即拒绝）；建议应用改为提交不可变 <code>suggestion_id</code>，服务端取原 Patch 并核对 hash 与四元组。</td></tr>
+      <tr><td class="hd">P0-6</td><td>15 分钟上限与人工确认冲突；L2/L3 同步超时无异步接管；缺降级语义与状态事件；会话语义未定义</td><td><span class="chip c-fix">修复</span></td><td>§2.6：<b>双时钟</b>（模型执行超时 vs 人工确认有效期 72h）；重评分返回 202 + 异步接管；<code>result_class: full|degraded|partial</code>；统一 <code>task.state_changed</code> 事件；会话定义 epoch 递增规则、空闲 TTL 24h、<code>turn_seq</code> 单调序 + 乱序拒绝码。</td></tr>
+      <tr><td class="hd">P0-7</td><td>签名自引用歧义、无时间容差与重放窗口；回调 SSRF；身份路由；台账内容与删除策略冲突</td><td><span class="chip c-fix">修复</span></td><td>§2.7：签名计算显式排除 signature 字段 + key_id + ±5min 容差 + 轮换双密钥；SSRF 防护套件（内网段拦截、DNS 一次解析、禁重定向、出口隔离）；tenant/connector 以认证主体为唯一可信来源；<b>台账数据最小化</b>（默认只存内容哈希与引用，全文存储须 opt-in 且受 TTL 与删除传播约束）。</td></tr>
+      <tr><td class="hd">P1-1</td><td>功效分析应先于样本量；B1/B2 结论不可共用口径</td><td><span class="chip c-ok">采纳</span></td><td>§1.5：预注册须含 MDE 与功效计算，确证集大小是功效分析的输出而非常量；B1/B2 分属不同验收口径与对外声明（复核 §1.3）。</td></tr>
+      <tr><td class="hd">P1-2</td><td>盲评文本只能证明文本好，不能证明任务效果</td><td><span class="chip c-ok">采纳</span></td><td>即 D-0：盲评对象改为<b>任务最终产出</b>（§1.3），文本评分降为辅助诊断。</td></tr>
+      <tr><td class="hd">P1-3</td><td>Patch 意图自我声明可规避门禁</td><td><span class="chip c-ok">采纳</span></td><td>§4：服务端意图校验——按实际 diff 独立计算意图签名，与声明不符即 <code>E_INTENT_MISMATCH</code> 拒绝或强制重分类。</td></tr>
+      <tr><td class="hd">P1-4</td><td>T1 缓存键缺解码/容器/驱动等分量</td><td><span class="chip c-ok">采纳</span></td><td>由 §2.1 的 EvalCacheKey 统一吸收（渲染键与评测键分离后各自完备）。</td></tr>
+      <tr><td class="hd">P2-1</td><td>渲染缓存与推理缓存分离；墓碑归档；新 Agent 与新协议表述；灰度接入</td><td><span class="chip c-sec">落地</span></td><td>§2.1 双键分离；墓碑 180 天转冷存（ID 仍永不复用）；连接器表述改为「现有绑定下新 Agent = 配置；新协议 = 新适配器」；接入流程 v2 改四段灰度（§5）。</td></tr>
+      <tr><td class="hd">声明</td><td>「接口已经冻结」言之过早</td><td><span class="chip c-rc">撤回</span></td><td>连接器契约状态降格为 <b>v1.0-rc（冻结候选）</b>：冻结的时点 = 机器校验契约包（OpenAPI/JSON Schema/事件 Schema/迁移表/错误映射）全绿 + TCK 通过 + 评审签字。本版所列修正作为 rc 阶段增量并入，正式 v1.0 重发于规范转写完成时。</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="s1">
+  <h2><span class="num">一</span> / Acceptance v2</h2>
+  <h3>评测体系 v2：五处结构修改</h3>
+
+  <h4 id="s1-1">1.1 评测单元改为「任务 × 模型版本 × 提示词版本」</h4>
+  <pre><code>EvalUnit = {
+  task_id,                 # 金标任务
+  model_snapshot,           # 模型版本/指纹（T1 自托管为权重+环境七分量）
+  prompt_variant           # ir_id + overlay 序列 + 渲染配置的 checksum
+}
+unit_id = sha256(task_id + model_snapshot + prompt_variant)</code></pre>
+  <p>三条硬口径随之生效：① 所有统计检验在 unit 层配对——<strong>同一任务、同一模型</strong>下比较不同提示词版本；② <strong>禁止跨模型混合计算总分</strong>，跨模型平均收益只作运营辅助指标，永不作门禁；③ 变量控制到 decode 参数与预算（同一 unit 内所有条件共享）。</p>
+
+  <h4 id="s1-2">1.2 逐模型独立优化：共享 IR + 模型 Overlay</h4>
+  <p>「一份 IR 全模型共用」不再等于「一份提示词全模型共用」。数据模型增加 <code>model_scope</code> 维度：</p>
+  <pre><code>Patch.model_scope ∈ { null, "glm5", "deepseek-v", "qwen-oss", ... }
+# null = 基线补丁（作用所有模型）
+# 具体模型 = Overlay 补丁（只作用于该模型）
+
+渲染管线：IR(基线) ⊕ patches(scope=null) ⊕ patches(scope=model_id, 按版本序)
+        → 模型卡渲染 → 该模型的 RenderedPrompt（携带 overlay_hash）</code></pre>
+  <ul class="tight">
+    <li>基线 IR 承载意图（目标/材料/约束/验收），保持跨模型一致——这是可比性的来源；</li>
+    <li>Overlay 承载模型差异（结构偏好、指令位置、格式惯例、怪癖规避），由模型卡规则 + 模型专属 Patch 共同生成；</li>
+    <li><strong>冠军按模型分别产生</strong>：每模型的候选、评测、晋升、版本线互相独立；连接器暴露的 EvalEvidence 必须逐模型携带（见 §3 缓存隔离）。</li>
+  </ul>
+
+  <figure>
+    <svg viewBox="0 0 680 240" role="img" aria-label="逐模型评测管线">
+      <rect x="14" y="30" width="150" height="56" rx="8" fill="#eaeffc" stroke="#c3d1f2"/>
+      <text x="89" y="53" text-anchor="middle" font-size="12.5" font-weight="700" fill="#2b54c4">基线 IR（意图）</text>
+      <text x="89" y="71" text-anchor="middle" font-size="10" fill="#3d4a66">+ scope=null 补丁</text>
+      <!-- three model lanes -->
+      <g>
+        <rect x="210" y="14" width="140" height="52" rx="8" fill="#fdf3e3" stroke="#f0dcb8"/>
+        <text x="280" y="34" text-anchor="middle" font-size="11" font-weight="700" fill="#a55a08">GLM-5 主生产</text>
+        <text x="280" y="52" text-anchor="middle" font-size="9.5" fill="#7a4a08">Overlay_glm5 → 渲染 → 评测</text>
+        <rect x="210" y="94" width="140" height="52" rx="8" fill="#e6f4f1" stroke="#b6ddd6"/>
+        <text x="280" y="114" text-anchor="middle" font-size="11" font-weight="700" fill="#0d7268">DeepSeek 备选</text>
+        <text x="280" y="132" text-anchor="middle" font-size="9.5" fill="#2c5f59">Overlay_dsk → 渲染 → 评测</text>
+        <rect x="210" y="174" width="140" height="52" rx="8" fill="#f1ecfb" stroke="#d8ccf4"/>
+        <text x="280" y="194" text-anchor="middle" font-size="11" font-weight="700" fill="#6d3fb8">Qwen 开源 T1 锚点</text>
+        <text x="280" y="212" text-anchor="middle" font-size="9.5" fill="#6d3fb8">Overlay_qwen → 渲染 → 评测</text>
+      </g>
+      <!-- champions -->
+      <g>
+        <rect x="392" y="14" width="130" height="52" rx="8" fill="#ffffff" stroke="#d8dde5"/>
+        <text x="457" y="34" text-anchor="middle" font-size="10.5" font-weight="700" fill="#333a45">冠军_GLM5</text>
+        <text x="457" y="52" text-anchor="middle" font-size="9.5" fill="#8b95a3">vs B1_GLM5 / B2_GLM5</text>
+        <rect x="392" y="94" width="130" height="52" rx="8" fill="#ffffff" stroke="#d8dde5"/>
+        <text x="457" y="114" text-anchor="middle" font-size="10.5" font-weight="700" fill="#333a45">冠军_DSK</text>
+        <text x="457" y="132" text-anchor="middle" font-size="9.5" fill="#8b95a3">vs B1_DSK / B2_DSK</text>
+        <rect x="392" y="174" width="130" height="52" rx="8" fill="#ffffff" stroke="#d8dde5"/>
+        <text x="457" y="194" text-anchor="middle" font-size="10.5" font-weight="700" fill="#333a45">冠军_QWEN</text>
+        <text x="457" y="212" text-anchor="middle" font-size="9.5" fill="#8b95a3">vs B1_QWEN / B2_QWEN</text>
+      </g>
+      <!-- labels -->
+      <g font-size="10.5" font-weight="700">
+        <rect x="552" y="14" width="114" height="52" rx="8" fill="#e6f4f1" stroke="#b6ddd6"/>
+        <text x="609" y="34" text-anchor="middle" fill="#0d7268">优化支持</text>
+        <text x="609" y="52" text-anchor="middle" font-size="9.5" fill="#2c5f59" font-weight="400">预注册改善达标</text>
+        <rect x="552" y="94" width="114" height="52" rx="8" fill="#fdf3e3" stroke="#f0dcb8"/>
+        <text x="609" y="114" text-anchor="middle" fill="#a55a08">兼容</text>
+        <text x="609" y="132" text-anchor="middle" font-size="9.5" fill="#7a4a08" font-weight="400">仅非劣达标</text>
+        <rect x="552" y="174" width="114" height="52" rx="8" fill="#fbeceb" stroke="#eec7c9"/>
+        <text x="609" y="194" text-anchor="middle" fill="#a8323a">不通过</text>
+        <text x="609" y="212" text-anchor="middle" font-size="9.5" fill="#a8323a" font-weight="400">关键回归 → 全局拦</text>
+      </g>
+      <g stroke="#9aa4b2" stroke-width="1.4" fill="none">
+        <line x1="164" y1="58" x2="206" y2="40" marker-end="url(#fa)"/>
+        <line x1="164" y1="58" x2="206" y2="120" marker-end="url(#fa)"/>
+        <line x1="164" y1="58" x2="206" y2="200" marker-end="url(#fa)"/>
+        <line x1="350" y1="40" x2="388" y2="40" marker-end="url(#fa)"/>
+        <line x1="350" y1="120" x2="388" y2="120" marker-end="url(#fa)"/>
+        <line x1="350" y1="200" x2="388" y2="200" marker-end="url(#fa)"/>
+        <line x1="522" y1="40" x2="548" y2="40" marker-end="url(#fa)"/>
+        <line x1="522" y1="120" x2="548" y2="120" marker-end="url(#fa)"/>
+        <line x1="522" y1="200" x2="548" y2="200" marker-end="url(#fa)"/>
+      </g>
+      <defs>
+        <marker id="fa" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" fill="#9aa4b2"/>
+        </marker>
+      </defs>
+    </svg>
+    <figcaption>图 1　逐模型评测管线：共享基线 IR 保证可比，Overlay 承载差异，冠军与门禁标签逐模型独立产生。</figcaption>
+  </figure>
+
+  <h4 id="s1-3">1.3 逐模型基线与盲评协议 v2</h4>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:170px">要素</th><th>v2 规则</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">B1 人工基线 × 模型</td><td>作者每任务盲写一份<b>模型无关的意图完整版</b>，再做逐模型轻量适配（各 ≤5 分钟：结构/格式按模型惯例调整）；三模型合计估 <strong>12–18 人时</strong>。适配只改表面形式，不改语义——作者隔离与盲写规则不变。</td></tr>
+      <tr><td class="hd">B2 单策略基线 × 模型</td><td>同样逐模型渲染（同一基线策略），探索性口径。</td></tr>
+      <tr><td class="hd">对照条件对齐</td><td>同一模型版本、同一材料、同一 decode、同一预算——<b>模型能力差异被完全控制</b>，差异只能归因提示词。这是「避免把模型差异误认为提示词收益」的机械保证。</td></tr>
+      <tr><td class="hd">盲评对象</td><td>3 名评审评审<b>匿名化、随机排序的任务最终产出</b>（候选、B1、B2 的输出混排，无来源标记）；rubric 与 done_criteria 来自基线 IR（逐模型共用验收标准，输出按模型分组评）。</td></tr>
+      <tr><td class="hd">文本评分的保留用途</td><td>降为辅助指标：可解释性分析、冗余检查、失败诊断。一切对外「效果」声明只能引用任务产出结果；文本分不得出现在效果主张中。</td></tr>
+      <tr><td class="hd">B1 降级口径</td><td>B1 无法落实 → 该模型门禁自动降为「兼容级候选」，对外声明强制标注「基线为单策略自动生成」，且<b>不得使用与 B1 模型相同的产品价值结论</b>。</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4 id="s1-4">1.4 三档门禁标签与全局安全闸</h4>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:120px">标签</th><th>判定（逐模型独立）</th><th>允许的声明</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">优化支持</td><td>该模型自身预注册改善阈值达成（任务产出主指标，配对 Wilcoxon，中位配对差 ≥ δ_imp）＋ 回归集非劣（TOST）＋ 硬门全过</td><td>「在该模型（版本/指纹）上经统计验证优于人工基线」</td></tr>
+      <tr><td class="hd">兼容</td><td>仅非劣达标（TOST）＋ 硬门全过</td><td>「在该模型上可用且不劣于基线」——<b>禁止宣称效果最佳</b></td></tr>
+      <tr><td class="hd">不通过</td><td>非劣未达或硬门失败</td><td>不得列入受支持模型清单</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <ul class="tight">
+    <li><strong>全局安全闸</strong>：任一必需模型出现安全违规、硬格式破坏或关键任务回归 → <strong>整体不通过</strong>，逐模型成绩不抵扣（一个模型的优秀不能掩盖另一个模型的退化）。</li>
+    <li><strong>跨模型平均收益</strong>：仅运营视图（成本/覆盖趋势），永不进入门禁与晋升判定。</li>
+    <li><strong>连接器联动</strong>：<code>/v1/model-cards</code> 逐模型携带当前标签（优化支持/兼容）与达成时间、证据指针——外部 Agent 看到的支持等级与内部门禁严格一致。</li>
+  </ul>
+
+  <h4 id="s1-5">1.5 功效分析与预算影响（诚实成本）</h4>
+  <ul class="tight">
+    <li><strong>样本量由功效分析产出</strong>：预注册须含 MDE、目标功效（0.8）、α（0.05）与基于校准集方差的计算记录；n=20 成为初始默认而非常量——功效不足时预注册二选一：增样本，或降低主张强度。确证集大小在预注册后锁定。</li>
+    <li><strong>逐模型成本结构</strong>：必需模型（主生产+备选）跑全量确证；低成本模型 P0a 从「兼容级」起步（L1/L2 + 回归非劣），预算允许再升优化支持级。</li>
+    <li><strong>人工预算上调</strong>：金标任务与标签（模型无关，一次建设）＋ B1 三模型 12–18 人时 ＋ 产出盲评（主模型全量 + 备选确证子集）≈ <strong>45–75 人时</strong>（原 30–53 上调，原因：逐模型基线与逐模型盲评）。降级选项：备选改确证子集、低成本仅兼容级（约 30–45 人时，如实标注功效限制）。</li>
+  </ul>
+</section>
+
+<section id="s2">
+  <h2><span class="num">二</span> / Contract Fixes</h2>
+  <h3>契约修复包：七项缺口的设计级关闭</h3>
+
+  <h4 id="s2-1">2.1 引用锚定与双缓存键（P0-1）</h4>
+  <pre><code># 规范引用锚定：弃用「版本相对章节号」，改用文档 ID + 条款 ID
+SPEC-IR     IR/Patch 契约      SPEC-EVAL   评测与基准
+SPEC-SEC    安全与租户治理      SPEC-CONN   连接器（v1.0-rc）
+引用示例：SPEC-CONN#session-semantics 代替「v0.4 §5.1」（漂移源）
+
+# 双缓存键（渲染与评测彻底分离）
+RenderCacheKey = ir_checksum + overlay_hash + model_id + renderer_version
+                 + template_version + decode          # 渲染=纯函数：可跨运行环境复用
+EvalCacheKey   = RenderCacheKey + model_snapshot/指纹 + 环境七分量(T1)
+                 + bench_version + baseline_id + repeats # 评测：禁跨环境/跨模型复用</code></pre>
+  <p>连接器规范中「六元组缓存键」表述统一归入 RenderCacheKey；评测缓存按 EvalCacheKey 独立失效。TCK 增加用例：改 <code>model_snapshot</code> 或任一环境分量必须未命中（跨模型缓存复用 = 强制失效）。</p>
+
+  <h4 id="s2-2">2.2 Port 方向与状态去耦（P0-2）</h4>
+  <ul class="tight">
+    <li><strong>入站 Port</strong>（Generate/Iterate/Score/Render/Event/Discovery/Governance）：由核心应用服务实现，HTTP/MCP 适配器作为调用方。</li>
+    <li><strong>出站 Port</strong>（事件投递、回调、存储）：核心只依赖接口，由外围适配器实现（依赖倒置的另一半）。</li>
+    <li><strong>TaskState 去耦</strong>：API 只承诺状态枚举（queued/extracting/rubric_pending/generating/evaluating/compiling/succeeded/failed/cancelled + result_class）与版本化迁移表；「枚举↔内部模块」的映射降为实现细节，内部重构不构成接口变更——修复连接器 v1.0 中「映射核心模块」与「外部不感知内部结构」的自相矛盾。</li>
+  </ul>
+
+  <h4 id="s2-3">2.3 HTTP/MCP 等价矩阵（P0-3）</h4>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:190px">能力</th><th>HTTP 资源</th><th>MCP 工具</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">discovery.v1</td><td>GET /v1/capabilities · /v1/schema · /v1/model-cards</td><td><code>pg_capabilities</code> · <code>pg_schema_get</code> · <code>pg_model_cards</code></td></tr>
+      <tr><td class="hd">governance.read.v1</td><td>GET /v1/tasks/{id}/evidence · /v1/sessions/{id} · /v1/budget</td><td><code>pg_evidence_get</code> · <code>pg_session_status</code> · <code>pg_budget_read</code></td></tr>
+      <tr><td class="hd">protection.request.v1 / modelcard.request.v1</td><td>POST /v1/protection-requests · /v1/model-card-requests</td><td><code>pg_protection_request</code> · <code>pg_modelcard_request</code></td></tr>
+      <tr><td class="hd">其余七项能力</td><td>见连接器规范 §4.1（不变）</td><td>原工具清单（不变）</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>等价性不再是声明而是可执行矩阵：TCK 对 13 工具 × 9 能力逐格断言「同输入同输出同错误码」。</p>
+
+  <h4 id="s2-4">2.4 幂等、并发与原子性（P0-4）</h4>
+  <ol class="steps">
+    <li><b>职责分离</b>：<code>request_id</code> 仅用于追踪，不参与去重；去重唯一由 <code>(tenant_id, connector_id, op, idempotency_key)</code> 数据库唯一约束承担。</li>
+    <li><b>载荷哈希绑定</b>：首请求记录 <code>sha256(canonical_request)</code>；同键不同载荷 → 409 <code>E_IDEM_PAYLOAD_MISMATCH</code>。</li>
+    <li><b>重放语义精确化</b>：重放返回<b>首次结果及其原状态码</b>（同步操作原样返回；异步任务返回当前任务状态）；<code>E_IDEM_REPLAY</code> 移入响应元数据字段，不再是「错误」。首次仍在执行中 → 返回 200 + <code>in_progress</code> 任务状态视图。</li>
+    <li><b>提交时原子 CAS</b>：模拟通过后，提交在单数据库事务内执行「<code>WHERE checksum = base</code> 的条件更新」——模拟期间被并发修改 → 条件更新零行命中 → 返回 <code>E_BASE_DRIFT</code>，无覆盖、无脏写。</li>
+    <li><b>台账原子性</b>：新 IR 提交、幂等记录、审计追加在<b>同一事务</b>（审计写入失败则整体回滚——审计是提交的组成部分，不是事后日志）。</li>
+    <li><b>键生命周期</b>：默认保留 72h（可配），TTL 清理；重放窗口与保留期一致，过期后同键视为新请求（显式记录该行为，杜绝「过期后重放静默重复执行」）。</li>
+  </ol>
+
+  <h4 id="s2-5">2.5 授权与建议的内容绑定（P0-5）</h4>
+  <pre><code>ProtectionAuthorization = {
+  tenant_id, ir_id, base_checksum,        # 归属与基线
+  patch_hash,                              # ★ 精确补丁内容哈希（JCS）
+  loc, op_type, expires_at,
+  single_use: true, consumed_at            # ★ 单次消费，重放 → E_PROTECT_CONSUMED (409)
+}
+# 载荷递归校验：服务端管理字段清单 {protect_class, provenance, created, meta}
+# 任何 ADD/REWRITE 的替换载荷（含嵌套对象）出现清单字段 → E_PROTECT_FIELD
+# 仅校验 loc 字符串不再足够——整棵载荷树都是校验对象
+
+# 建议应用：调用方不再携带 op 序列
+POST /v1/sessions/{id}/patches { suggestion_id, 四元组确认 }
+→ 服务端按 id 取出不可变建议 Patch，核对 patch_hash 与四元组 → 走应用器
+→ 修改过的建议既取不到（id 不存在）也换不进来（hash 不匹配）</code></pre>
+
+  <h4 id="s2-6">2.6 时间模型与事件语义（P0-6）</h4>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:210px">问题</th><th>定稿</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">双时钟</td><td><b>模型执行超时</b>（单次调用 120s；任务累计计算预算独立配置）与<b>人工确认有效期</b>（rubric 确认 72h、保护审批 7 天）分离。任务 15 分钟上限<b>仅适用于计算阶段</b；处于人工等待态的任务转入长时程（最长 72h），超期自动 cancelled 并通知。</td></tr>
+      <tr><td class="hd">重评分异步接管</td><td>score.v1：L1 与小规模 L2 保证 10s 同步；超限（多候选/任何 L3）→ 202 + task_id，走异步任务模型；同步端点永不挂死。</td></tr>
+      <tr><td class="hd">降级结果语义</td><td><code>result_class ∈ {full, degraded, partial}</code> + <code>degraded_reason</code>：超时/预算耗尽返回已完成层级的部分结果时必须显式标注，禁止与完整结果同形态交付。</td></tr>
+      <tr><td class="hd">统一状态事件</td><td><code>task.state_changed</code>（含状态快照）为规范事件，task.completed/failed 为兼容别名；新增 <code>rubric.confirmation_required</code>、<code>task.cancelled</code>；取消与完成的竞态规则：完成事务先提交则取消返回 409（终态不可逆）。</td></tr>
+      <tr><td class="hd">会话语义</td><td>session_epoch 递增于：补丁应用、人工编辑、任务切换；会话显式关闭或空闲 24h 自动过期；事件携带单调 <code>turn_seq</code>，乱序 → <code>E_EVENT_ORDER</code> 拒绝由客户端重试。</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4 id="s2-7">2.7 回调安全与数据最小化（P0-7）</h4>
+  <ul class="tight">
+    <li><strong>签名规范化</strong>：HMAC 计算输入 = 事件的 canonical JSON <b>去除 signature 字段</b>（显式排除，消除自引用歧义）+ <code>key_id</code> + 时间戳 ±5min 容差 + <code>event_id</code> 去重窗口 72h；轮换期双密钥并验（旧钥宽限 24h）。</li>
+    <li><strong>SSRF 防护套件</strong>：注册与每次投递双重校验 URL——拒绝内网/保留段/环回/链路本地/云元数据端点；DNS 解析一次并直连结果 IP（防重绑定）；禁自动重定向；出站统一经隔离代理；租户可收紧为白名单模式。</li>
+    <li><strong>身份以认证主体为准</strong>：tenant_id/connector_id 由 token/mTLS 主体反查获得；正文值仅做一致性核对，不符 → 401 <code>E_AUTH_IDENTITY_MISMATCH</code>，绝不参与授权路由。</li>
+    <li><strong>台账数据最小化</strong>：哈希链默认只存<strong>元数据与内容哈希</strong>（谁、何时、改了哪个 loc、patch_hash）；提示词全文、对话与材料仅在租户 opt-in 保留策略（TTL + 删除传播 + PII 扫描）下以引用方式存储，WORM 约束只施加于哈希与元数据——消除「不可篡改」与「可删除」的冲突。</li>
+  </ul>
+</section>
+
+<section id="s3">
+  <h2><span class="num">三</span> / First-Batch Models</h2>
+  <h3>首批必须支持的模型清单（回答待决问题）</h3>
+
+  <p class="lead">采纳「主生产 + 异供应商/异架构备选 + 低成本」三结构。以下为推荐定稿，全部以 D2 实测时可得的具体版本/指纹钉死后写入模型卡。</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:110px">位次</th><th style="width:210px">模型</th><th>入选理由</th><th style="width:100px">版本策略</th><th style="width:130px">P0a 门槛</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="hd">主生产</td>
+        <td><strong>GLM-5 系列</strong>（智谱）</td>
+        <td>中文 Agent 生产主力、长任务能力与本系统运行环境同源；若你的生产 Agent 实际跑在别家模型上，<strong>主生产模型应以实际生产为准</strong>——这是本清单唯一需要你最终确认的点，其余结构不变。</td>
+        <td>T2（别名+指纹）</td>
+        <td>优化支持级（必需）</td>
+      </tr>
+      <tr>
+        <td class="hd">备选</td>
+        <td><strong>DeepSeek V 系列</strong>（MoE 架构）</td>
+        <td>不同供应商 + 不同架构（MoE vs Dense），行为差异最大，是对「跨模型优化」最严苛的测试对象；生态使用广泛。</td>
+        <td>T2（别名+指纹）</td>
+        <td>优化支持级（必需）</td>
+      </tr>
+      <tr>
+        <td class="hd">低成本</td>
+        <td><strong>Qwen 开源系列小尺寸</strong>（自托管）</td>
+        <td>权重可钉死 → <strong>全系统唯一的 T1 受控环境复现锚点</strong>；低成本跑高频 L3 回归与消融；自托管规避供应商漂移。</td>
+        <td>T1（权重+环境七分量）</td>
+        <td>兼容级起步（预算允许升优化支持）</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h5>四角色选型与回避规则</h5>
+  <ul class="tight">
+    <li><strong>生成器</strong>：强指令遵循与长上下文模型（与主生产异族优先，避免自我风格固化；D2 实测定夺）。</li>
+    <li><strong>裁判</strong>：中等成本、输出稳定；两条回避规则——<b>与被测目标模型不同族</b>（模型不能裁自己）、<b>与生成器不同族</b>；三目标模型评测时按族轮换（GLM 被测用 DeepSeek 系裁判，反之亦然，Qwen 被测由两者任一异族裁判）。</li>
+    <li><strong>反思器</strong>：旗舰模型，仅离线批处理调用（继承 v0.2 §7 的低频高强度原则）。</li>
+    <li><strong>被测目标</strong>：即上表三模型；任何结论、缓存、冠军均不得跨模型复用（§2.1 键已强制）。</li>
+  </ul>
+  <p>连接器与评测证据的同步义务：EvalEvidence 必须逐模型记录 model_snapshot/指纹、decode、renderer_version、overlay_hash、baseline_id 与达成标签；<code>/v1/model-cards</code> 对外逐模型披露「优化支持/兼容」状态及证据指针。</p>
+</section>
+
+<section id="s4">
+  <h2><span class="num">四</span> / Intent Check</h2>
+  <h3>意图服务端校验与 TCK 增补</h3>
+  <p>复审指出：Patch 意图由创建方自我声明，可选宽松意图规避门禁。修复——<strong>意图不采信声明，采信 diff</strong>：</p>
+  <ol class="steps">
+    <li><b>意图签名</b>：应用器在模拟阶段依据实际 op 序列计算意图签名（如：仅含 DELETE/MOVE + token 下降 → simplify；含 ADD 约束/REWRITE goal → improve；修复类绑定失败签名引用 → fix）。</li>
+    <li><b>一致性判定</b>：签名与声明不符 → <code>E_INTENT_MISMATCH</code>(422) 拒绝，或返回建议意图供创建方确认后重提交。</li>
+    <li><b>门禁按校验后的意图执行</b>：v0.4 §5 的四类判据不变，但作用对象是校验后的意图——声明宽松、diff 实严的补丁按实际意图受门。</li>
+  </ol>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:280px">TCK 增补用例（并入 SPEC-EVAL 用例体系）</th><th>断言</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">并发同键 / 同键异载荷</td><td>并发重复请求只执行一次；异载荷返回 409</td></tr>
+      <tr><td class="hd">提交时 CAS 竞态</td><td>模拟期间基线被改 → 零覆盖，返回 E_BASE_DRIFT</td></tr>
+      <tr><td class="hd">取消/完成竞态</td><td>终态不可逆：完成先提交则取消 409，反之取消生效</td></tr>
+      <tr><td class="hd">授权重放与单次消费</td><td>授权复用不同补丁 / 二次执行 → E_PROTECT_CONSUMED</td></tr>
+      <tr><td class="hd">嵌套保护字段</td><td>REWRITE 载荷深层携带 provenance/protect_class → E_PROTECT_FIELD</td></tr>
+      <tr><td class="hd">suggestion_id 篡改</td><td>换 id / 换 op 序列均无法通过 hash 核对</td></tr>
+      <tr><td class="hd">跨模型缓存隔离</td><td>改 model_snapshot/环境分量必须未命中</td></tr>
+      <tr><td class="hd">意图声明规避</td><td>声明 simplify、实际新增约束 → E_INTENT_MISMATCH</td></tr>
+      <tr><td class="hd">SSRF / 身份错位 / 乱序事件</td><td>内网回调拒绝；正文身份与认证主体不符拒 401；turn_seq 乱序拒绝</td></tr>
+      <tr><td class="hd">限流与负载</td><td>QPS、并发任务、请求体/材料大小、会话数上限全部可配置且被强制</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="s5">
+  <h2><span class="num">五</span> / Onboarding v2</h2>
+  <h3>接入流程 v2：四段灰度取代二值切换</h3>
+  <ol class="steps">
+    <li><b>沙箱 TCK</b>：沙箱租户 + Mock 绑定，全能力契约测试通过（不变）。</li>
+    <li><b>最小权限生产灰度</b>：<code>sandbox:false</code> 但 scopes 仅开放 discovery + 单一能力（通常 generate.v1），配额 ≤ 5 任务/日，回调白名单模式。</li>
+    <li><b>指标观察</b>：作废率、P95 时延、错误率、预算消耗在运营指标表（§6.2 口径）观察 ≥ 1 个观察窗；异常即回缩权限。</li>
+    <li><b>逐能力提升配额</b>：每新增能力（iterate → events）重复 2–3 段；events.v1（在线模式）最后开放且永远最后开放——它的风险面最大。</li>
+  </ol>
+  <p>回缩与吊销：任一观察窗内 TCK 类故障（并发、越权、篡改）复现 → 冻结该连接器新任务、只读模式排查；吊销即时生效并入审计链。回调运维：重试带抖动、死信队列与人工重放工具随 P1 交付。</p>
+</section>
+
+<section id="s6">
+  <h2><span class="num">六</span> / Consistency &amp; Roadmap v4</h2>
+  <h3>一致性核查与阶段映射</h3>
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:240px">核查项</th><th>结论</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">铁律一（模型特异最优）</td><td>由口号变成机制：逐模型 Overlay、逐模型冠军、三档标签、跨模型缓存禁用——四重落地。</td></tr>
+      <tr><td class="hd">单一写者 / 保护三权 / rubric 锚点</td><td>全部保持；§2.5/§2.7 的收紧（内容绑定、身份绑定）只增强不变式。</td></tr>
+      <tr><td class="hd">统计骨架（校准→预注册→确证）</td><td>不变；仅评测单元下移到「任务×模型×版本」层，配对检验同构适用。</td></tr>
+      <tr><td class="hd">预算表</td><td>45–75 人时（含降级选项 30–45），预注册前置与功效分析已并入 §1.5。</td></tr>
+      <tr><td class="hd">声明门禁</td><td>两条冻结声明的解冻时点不变；连接器契约状态改判 <b>v1.0-rc</b>，正式 v1.0 与四份规范转写同批签发。</td></tr>
+      <tr><td class="hd">范围防回涨</td><td>逐模型优化不扩功能面——仍限于文本/系统提示词；三模型是首批清单不是永久承诺，新模型经 modelcard.request 流程 + 逐模型门禁进入。</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:130px">阶段</th><th>v0.5 调整</th></tr></thead>
+    <tbody>
+      <tr><td class="hd">P0-前置</td><td>四份规范转写（SPEC-IR、SPEC-EVAL、SPEC-SEC、SPEC-CONN v1.0-rc→1.0）；轨 B：金标建设、B1 三模型盲写、D2 实测与版本钉死、功效分析、预算冻结（45–75 人时或选定降级档）</td></tr>
+      <tr><td class="hd">P0a</td><td>双模型系列全流程验证（GLM + DeepSeek 优化支持级门槛；Qwen 兼容级起步）；逐模型冠军与逐模型证据；S0 审计（含 §4 TCK 增补）→ 解冻声明</td></tr>
+      <tr><td class="hd">P0b / P1</td><td>不变（应用器产品集成；在线模式事务 + §5 灰度接入）</td></tr>
+      <tr><td class="hd">P2+</td><td>策略学习按逐模型桶归因（任务类型 × 模型 × 意图）；基准轮换按模型分组执行；其余门槛驱动不变</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="key violet">
+    <b>终版状态：</b>第四轮复审的 7 项 P0 契约缺口全部设计关闭，用户确认的主目标调整以五处结构修改落地，首批三模型清单与四角色回避规则定稿，接入流程升级为四段灰度。设计层已无已知开放项；剩余阻塞全部是工程与数据产物：四份规范的机器校验契约包、TCK 实现、金标与 B1 建设、D2 实测与预算冻结。方案冻结于 v0.5，下一站是 SPEC 转写与 S0 审计。
+  </div>
+</section>
+
+<footer>
+  <p style="font-size:12px;color:#a8b0bc;">v0.5 主验收重构版 · 2026-10-24 · 响应第四轮外部复审（7×P0 契约缺口 + P1/P2）与用户主目标确认（D-0）；撤回「接口已冻结」表述（改判 v1.0-rc）；v0.1–v0.4 与连接器规范 v1.0 均保留未动，五版可对照。</p>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

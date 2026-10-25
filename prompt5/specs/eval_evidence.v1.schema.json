@@ -1,0 +1,148 @@
+{
+  "$defs": {
+    "JudgeRef": {
+      "additionalProperties": false,
+      "properties": {
+        "model_snapshot": {
+          "title": "Model Snapshot",
+          "type": "string"
+        },
+        "prompt_version": {
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "decode": {
+          "additionalProperties": true,
+          "title": "Decode",
+          "type": "object"
+        }
+      },
+      "required": [
+        "model_snapshot",
+        "prompt_version"
+      ],
+      "title": "JudgeRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "对外证据：必须携带层级、复现层级与裁判链（§9.5）。",
+  "properties": {
+    "level": {
+      "enum": [
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "title": "Level",
+      "type": "string"
+    },
+    "rubric_version": {
+      "title": "Rubric Version",
+      "type": "string"
+    },
+    "metrics": {
+      "additionalProperties": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Metrics",
+      "type": "object"
+    },
+    "reproduction_tier": {
+      "enum": [
+        "T1",
+        "T2",
+        "T3"
+      ],
+      "title": "Reproduction Tier",
+      "type": "string"
+    },
+    "model_snapshot": {
+      "title": "Model Snapshot",
+      "type": "string"
+    },
+    "decode": {
+      "additionalProperties": true,
+      "title": "Decode",
+      "type": "object"
+    },
+    "renderer_version": {
+      "title": "Renderer Version",
+      "type": "string"
+    },
+    "baseline_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Baseline Id"
+    },
+    "label": {
+      "anyOf": [
+        {
+          "enum": [
+            "optimizing",
+            "compatible",
+            "rejected"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Label"
+    },
+    "judge": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JudgeRef"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "reviewer_pool_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reviewer Pool Id"
+    },
+    "expires_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expires At"
+    }
+  },
+  "required": [
+    "level",
+    "rubric_version",
+    "reproduction_tier",
+    "model_snapshot",
+    "renderer_version"
+  ],
+  "title": "EvalEvidence",
+  "type": "object"
+}

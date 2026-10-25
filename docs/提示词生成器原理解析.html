@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>提示词生成器的工作原理 — 系统拆解</title>
+<style>
+  :root{
+    --ink:#171a20;
+    --ink-2:#333a45;
+    --muted:#67707e;
+    --faint:#8b95a3;
+    --line:#e4e7ec;
+    --line-2:#eef0f4;
+    --bg:#ffffff;
+    --soft:#f7f8fa;
+    --soft-2:#f1f4f9;
+    --accent:#2b54c4;
+    --accent-soft:#eaeffc;
+    --teal:#0d7268;
+    --teal-soft:#e6f4f1;
+    --amber:#a55a08;
+    --amber-soft:#fdf3e3;
+    --rose:#a8323a;
+    --rose-soft:#fbeceb;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-text-size-adjust:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Inter","Segoe UI",system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    font-size:16px;
+    line-height:1.78;
+    letter-spacing:.01em;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{display:grid;grid-template-columns:212px minmax(0,1fr);gap:56px;max-width:1160px;margin:0 auto;padding:0 40px 120px;}
+  /* ---------- TOC ---------- */
+  .toc{position:sticky;top:0;align-self:start;max-height:100vh;overflow:auto;padding:52px 0 40px;font-size:13px;line-height:1.6;}
+  .toc-title{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:14px;font-weight:600;}
+  .toc a{display:block;color:var(--muted);text-decoration:none;padding:5px 0 5px 12px;border-left:2px solid var(--line-2);transition:.15s;}
+  .toc a:hover{color:var(--accent);border-left-color:var(--accent);}
+  .toc a.lv1{font-weight:600;color:var(--ink-2);margin-top:10px;}
+  .toc a.lv2{padding-left:24px;font-size:12.5px;}
+  /* ---------- Header ---------- */
+  header{padding:64px 0 0;}
+  .kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:18px;}
+  h1{font-size:40px;line-height:1.25;letter-spacing:-.02em;font-weight:750;margin:0 0 18px;color:#0e1116;}
+  .sub{font-size:17.5px;color:var(--muted);line-height:1.75;margin:0 0 26px;max-width:44em;}
+  .meta{display:flex;flex-wrap:wrap;gap:10px;font-size:12.5px;color:var(--faint);padding-bottom:26px;border-bottom:1px solid var(--line);}
+  .meta span{padding:3px 10px;background:var(--soft);border-radius:999px;}
+  /* ---------- Sections ---------- */
+  section{padding-top:56px;}
+  h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);font-weight:700;margin:0 0 8px;}
+  h2 .num{display:inline-block;min-width:22px;}
+  h3{font-size:27px;line-height:1.35;font-weight:700;letter-spacing:-.01em;margin:0 0 22px;color:#0e1116;padding-bottom:16px;border-bottom:1px solid var(--line);}
+  h4{font-size:18.5px;line-height:1.5;font-weight:700;margin:38px 0 12px;color:#12161d;}
+  h5{font-size:15px;font-weight:700;margin:24px 0 8px;color:var(--ink-2);}
+  p{margin:0 0 15px;}
+  strong{font-weight:650;color:#0f1319;}
+  em{font-style:normal;background:linear-gradient(transparent 62%,#fdf0c8 62%);padding:0 1px;}
+  a{color:var(--accent);}
+  code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:.875em;background:var(--soft-2);padding:1.5px 5px;border-radius:4px;color:#243046;}
+  /* ---------- Lead ---------- */
+  .lead{font-size:17px;line-height:1.8;color:var(--ink-2);border-left:2px solid var(--accent);padding-left:20px;margin:0 0 24px;}
+  /* ---------- Boxes ---------- */
+  .note{background:var(--soft);border:1px solid var(--line);border-radius:var(--radius);padding:18px 22px;font-size:14.5px;line-height:1.72;color:var(--ink-2);margin:22px 0;}
+  .note b{color:var(--ink);}
+  .note .tag{display:inline-block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--faint);margin-bottom:6px;}
+  .key{background:var(--accent-soft);border:1px solid #d3ddf8;border-left:3px solid var(--accent);border-radius:6px;padding:16px 20px;margin:22px 0;font-size:15px;line-height:1.72;color:#1c2a4a;}
+  .key b{color:var(--accent);}
+  /* ---------- Figures ---------- */
+  figure{margin:30px 0;padding:0;}
+  figure svg{display:block;width:100%;height:auto;background:var(--soft);border:1px solid var(--line);border-radius:var(--radius);}
+  figcaption{font-size:12.5px;color:var(--faint);margin-top:9px;line-height:1.6;text-align:center;}
+  /* ---------- Tables ---------- */
+  .scroll{overflow-x:auto;margin:24px 0;border:1px solid var(--line);border-radius:var(--radius);}
+  table{border-collapse:collapse;width:100%;font-size:13.6px;line-height:1.6;min-width:620px;}
+  th{background:#f4f6f9;text-align:left;font-weight:700;color:var(--ink-2);padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap;font-size:12.8px;}
+  td{padding:10px 14px;border-bottom:1px solid var(--line-2);vertical-align:top;color:var(--ink-2);}
+  tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:#fafbfc;}
+  td.hd{font-weight:650;color:var(--ink);background:#fcfcfd;white-space:nowrap;}
+  /* ---------- Lists ---------- */
+  ul,ol{margin:0 0 16px;padding-left:1.35em;}
+  li{margin:0 0 7px;}
+  li::marker{color:var(--faint);}
+  .tight li{margin-bottom:4px;}
+  /* ---------- Project card ---------- */
+  .proj{border:1px solid var(--line);border-radius:var(--radius);padding:0;margin:26px 0;overflow:hidden;}
+  .proj-hd{background:var(--soft);padding:14px 20px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;}
+  .proj-hd .name{font-family:"SFMono-Regular",Consolas,monospace;font-size:14.5px;font-weight:700;color:#101620;}
+  .proj-hd .zh{font-size:15px;font-weight:650;color:var(--ink-2);}
+  .badge{font-size:11px;padding:2px 8px;border-radius:999px;font-weight:600;letter-spacing:.02em;}
+  .b-a{background:var(--teal-soft);color:var(--teal);}
+  .b-b{background:var(--accent-soft);color:var(--accent);}
+  .b-c{background:var(--amber-soft);color:var(--amber);}
+  .b-d{background:var(--rose-soft);color:var(--rose);}
+  .proj-bd{padding:18px 22px 20px;}
+  .proj-bd p:last-child{margin-bottom:0;}
+  .kv{display:grid;grid-template-columns:74px minmax(0,1fr);gap:2px 14px;font-size:14.3px;margin:0 0 14px;}
+  .kv dt{color:var(--faint);font-size:12.5px;font-weight:600;padding-top:2px;}
+  .kv dd{margin:0;color:var(--ink-2);line-height:1.7;}
+  /* ---------- Pipeline ---------- */
+  .steps{counter-reset:s;list-style:none;padding:0;margin:20px 0;}
+  .steps li{counter-increment:s;position:relative;padding-left:38px;margin-bottom:14px;}
+  .steps li::before{content:counter(s);position:absolute;left:0;top:1px;width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:"SFMono-Regular",Consolas,monospace;}
+  .steps b{display:block;margin-bottom:2px;}
+  /* ---------- Footer ---------- */
+  footer{margin-top:70px;padding-top:28px;border-top:1px solid var(--line);font-size:13px;color:var(--faint);line-height:1.8;}
+  .refs{font-size:13.4px;line-height:1.85;color:var(--muted);}
+  .refs li{margin-bottom:6px;}
+  .refs code{font-size:.86em;}
+  @media (max-width:980px){
+    .wrap{grid-template-columns:1fr;gap:0;padding:0 24px 80px;}
+    .toc{display:none;}
+    h1{font-size:30px;}
+    h3{font-size:22px;}
+    header{padding-top:40px;}
+  }
+  @media print{
+    .toc{display:none;}
+    .wrap{display:block;max-width:none;padding:0;}
+    section{page-break-inside:avoid;}
+    figure{page-break-inside:avoid;}
+    body{font-size:11pt;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav class="toc">
+  <div class="toc-title">目录</div>
+  <a href="#intro" class="lv1">导读</a>
+  <a href="#s1" class="lv1">一 · WorkBuddy 原生生成机制</a>
+  <a href="#s1-1" class="lv2">1.1 三层生成模型</a>
+  <a href="#s1-2" class="lv2">1.2 上下文组装管线</a>
+  <a href="#s1-3" class="lv2">1.3 设计思路</a>
+  <a href="#s1-4" class="lv2">1.4 取舍与边界</a>
+  <a href="#s2" class="lv1">二 · 开源项目拆解</a>
+  <a href="#s2-0" class="lv2">2.0 三个技术家族</a>
+  <a href="#s2-a" class="lv2">2.1 模板与范式驱动</a>
+  <a href="#s2-b" class="lv2">2.2 生成—评估—选择</a>
+  <a href="#s2-c" class="lv2">2.3 声明式编译与约束</a>
+  <a href="#s3" class="lv1">三 · 横向对比</a>
+  <a href="#s3-1" class="lv2">3.1 共性原理</a>
+  <a href="#s3-2" class="lv2">3.2 差异矩阵</a>
+  <a href="#s3-3" class="lv2">3.3 选型建议</a>
+  <a href="#s3-4" class="lv2">3.4 共同边界</a>
+  <a href="#s4" class="lv1">四 · AI 如何理解提示词</a>
+  <a href="#s4-1" class="lv2">4.1 五个阶段</a>
+  <a href="#s4-2" class="lv2">4.2 条件分布视角</a>
+  <a href="#s4-3" class="lv2">4.3 经验法则的机制解释</a>
+  <a href="#s4-4" class="lv2">4.4 结构性失效</a>
+  <a href="#s4-5" class="lv2">4.5 约束解码</a>
+</nav>
+
+<main>
+
+<header>
+  <div class="kicker">Technical Analysis · Prompt Generation Systems</div>
+  <h1>提示词生成器的工作原理</h1>
+  <p class="sub">从 WorkBuddy 的原生组装机制，到 GitHub 上四类开源实现，再到模型内部的概率机制——把"写好一段提示词"拆成可被工程复现的六个环节。</p>
+  <div class="meta">
+    <span>系统拆解</span>
+    <span>4 个部分</span>
+    <span>7 个开源项目</span>
+    <span>2026-10-24</span>
+  </div>
+</header>
+
+<section id="intro">
+  <h3>导读：所有提示词生成器，都在解同一个方程</h3>
+  <p class="lead">表面上看，提示词生成器五花八门：有的是网页按钮，有的是编程框架，有的是语法编译器。但它们试图解决的其实是同一个问题——<strong>人的意图是稀疏的、缺省的、情绪化的；模型的输入必须是稠密的、无歧义的、可条件化的。</strong>生成器就是这个转换层。</p>
+  <p>把它写成一句话：给定一个模糊的意图 <code>I</code> 和一个目标模型 <code>M</code>，生成器要产出一段文本（或一段程序、或一组权重）<code>P</code>，使得 <code>M</code> 在 <code>P</code> 的条件下的输出分布，尽可能集中在人真正想要的结果 <code>y*</code> 上。</p>
+  <p>这个定义里藏着四个变量，也就分出了四种技术路线：<em>P 从哪里来</em>（模板 / 搜索 / 编译 / 训练）、<em>怎么知道 P 变好了</em>（人看 / LLM 裁判 / 客观指标 / 语法合法性）、<em>优化发生在什么时候</em>（写时 / 运行时 / 训练时）、以及<em>保证有多硬</em>（概率性 / 确定性）。后文的四部分，就是围绕这四个变量展开的。</p>
+
+  <figure>
+    <svg viewBox="0 0 680 176" role="img" aria-label="提示词生成的三段式全景">
+      <defs>
+        <marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" fill="#9aa4b2"/>
+        </marker>
+      </defs>
+      <!-- box 1 -->
+      <rect x="14" y="40" width="132" height="80" rx="8" fill="#ffffff" stroke="#d8dde5"/>
+      <text x="80" y="70" text-anchor="middle" font-size="13" font-weight="700" fill="#171a20">人的意图</text>
+      <text x="80" y="90" text-anchor="middle" font-size="10.5" fill="#67707e">目标 · 材料 · 隐含标准</text>
+      <text x="80" y="106" text-anchor="middle" font-size="10.5" fill="#a8323a">稀疏 / 缺省 / 有噪声</text>
+      <!-- box 2 -->
+      <rect x="182" y="26" width="176" height="108" rx="8" fill="#eaeffc" stroke="#c3d1f2"/>
+      <text x="270" y="52" text-anchor="middle" font-size="13" font-weight="700" fill="#2b54c4">生成器</text>
+      <text x="270" y="74" text-anchor="middle" font-size="10.5" fill="#3d4a66">补槽位 · 加约束 · 选候选</text>
+      <text x="270" y="92" text-anchor="middle" font-size="10.5" fill="#3d4a66">模板 / 搜索 / 编译 / 训练</text>
+      <text x="270" y="114" text-anchor="middle" font-size="10" fill="#2b54c4" font-family="monospace">P = f(I, M, metric)</text>
+      <!-- box 3 -->
+      <rect x="394" y="40" width="132" height="80" rx="8" fill="#ffffff" stroke="#d8dde5"/>
+      <text x="460" y="70" text-anchor="middle" font-size="13" font-weight="700" fill="#171a20">模型条件化</text>
+      <text x="460" y="90" text-anchor="middle" font-size="10.5" fill="#67707e">p(y | P) 被重塑</text>
+      <text x="460" y="106" text-anchor="middle" font-size="10.5" fill="#0d7268">分布变尖 → 更可控</text>
+      <!-- box 4 -->
+      <rect x="562" y="40" width="104" height="80" rx="8" fill="#e6f4f1" stroke="#b6ddd6"/>
+      <text x="614" y="70" text-anchor="middle" font-size="13" font-weight="700" fill="#0d7268">可验收结果</text>
+      <text x="614" y="90" text-anchor="middle" font-size="10.5" fill="#0d7268">y 命中 y*</text>
+      <text x="614" y="106" text-anchor="middle" font-size="10.5" fill="#0d7268">或结构合法</text>
+      <!-- arrows -->
+      <line x1="146" y1="80" x2="176" y2="80" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#ar)"/>
+      <line x1="358" y1="80" x2="388" y2="80" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#ar)"/>
+      <line x1="526" y1="80" x2="556" y2="80" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#ar)"/>
+      <!-- feedback -->
+      <path d="M614,124 L614,150 L270,150 L270,138" fill="none" stroke="#c9d0da" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+      <text x="442" y="166" text-anchor="middle" font-size="10" fill="#8b95a3">反馈：不合格则回炉（重写 / 重搜 / 收紧约束）</text>
+    </svg>
+    <figcaption>图 0　提示词生成的四段链路。生成器的价值不在于"写得漂亮"，而在于缩短 I 与 y* 之间的距离。</figcaption>
+  </figure>
+
+  <div class="note">
+    <div class="tag">Method note</div>
+    <b>关于本文的证据分级。</b>第一部分中，凡涉及 WorkBuddy 的界面与能力边界，均以官方文档公开描述为准；凡涉及"模型侧如何拼装上下文"，属于从可观察行为与公开的 Skill / 记忆 / 专家机制反推的架构归纳，用于说明设计范式，不代表具体实现细节。第二部分全部基于各项目仓库与官方文档的一手内容。第四部分为当前主流 Transformer 架构的公开共识。
+  </div>
+</section>
+
+
+<!-- ==================== 第一部分 ==================== -->
+<section id="s1">
+  <h2><span class="num">一</span> / Part One</h2>
+  <h3>WorkBuddy 的原生提示词生成机制</h3>
+
+  <p class="lead">先纠正一个常见误解：WorkBuddy 并没有一个"输入需求、吐出提示词"的独立按钮。它的原生能力是把用户的自然语言<strong>直接当作可执行的任务指令</strong>——也就是说，"生成提示词"这件事被内化成了任务创建、上下文装配与执行编排的一部分。</p>
+
+  <p>这套机制可以拆成三层：最外层是<strong>面向人的结构化引导</strong>（把一句话需求补成任务简报），中间层是<strong>可编程的提示词载体</strong>（Skill / 专家包），最内层是<strong>面向模型的上下文组装</strong>（每一轮推理前把离散信息源拼成一次请求）。三层叠加，才构成完整的"原生生成器"。</p>
+
+  <h4 id="s1-1">1.1 三层生成模型：静态模板 → 半动态 Skill → 动态编排</h4>
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr><th>层</th><th>载体</th><th>生成物</th><th>变化频率</th><th>谁来验收</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="hd">L1 模板层</td>
+        <td>创建任务页的场景模板（日常办公 / 代码开发 / 设计创意）</td>
+        <td>一段带占位符的提示词骨架</td>
+        <td>静态，随产品迭代</td>
+        <td>人（点选即用）</td>
+      </tr>
+      <tr>
+        <td class="hd">L2 载体层</td>
+        <td>Skill（<code>SKILL.md</code> + <code>references/</code>）、专家包、连接器</td>
+        <td>可复用、可版本化的提示词程序</td>
+        <td>半动态，用户可编写</td>
+        <td>人 + 运行结果</td>
+      </tr>
+      <tr>
+        <td class="hd">L3 装配层</td>
+        <td>运行时上下文组装管线</td>
+        <td>一次真实的模型请求</td>
+        <td>每一轮都变</td>
+        <td>模型（执行）+ 人（结果区）</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h5>L1：模板层——用"预览态"降低试错成本</h5>
+  <p>官方文档里有一个值得注意的交互细节：鼠标悬停模板时，输入框会以<strong>灰色预览文案</strong>显示模板内容；若输入框已有文字，预览接在末尾、原文保持黑色；移开或失焦即清除；灰字不进入草稿、不进撤销栈、不会被发送，只有点击才真正填入。</p>
+  <p>这个设计不是 UI 洁癖，而是<em>把"提示词的成本"从"要不要用"降到了"看一眼"</em>。传统提示词库的失败点在于：用户不知道模板长什么样，于是不敢点；点了又怕覆盖自己写的东西。灰度预览同时解决了"信息不对称"和"操作不可逆"两个阻力——这是提示词产品化里最容易被忽略的一环。</p>
+
+  <h5>L2：载体层——Skill 就是 Markdown 写成的提示词生成器</h5>
+  <p>Skill 机制的本质，是把提示词从"一次性字符串"升级为"可加载的模块"：一个目录、一份 <code>SKILL.md</code> 定义角色与工作流、若干 <code>references/</code> 存放按需加载的参考资料。社区里已经有人用这套机制搭出完整的提示词生成 Agent——流程是「信息收集 → 加载模型特性表 → 按目标模型生成 → 格式化输出」。</p>
+  <p>这里的关键机制叫<strong>渐进式披露（progressive disclosure）</strong>：模型的上下文里常驻的只有一句"这个技能存在、什么时候用"，全文与参考资料只在触发时才载入。类比到提示词生成器上，意味着你可以在 <code>references/model-cards.md</code> 里为每个模型写一份"提示词偏好卡"（比如某个模型对 XML 标签敏感、某个模型对超长系统提示衰减更快），生成时按需取用，而不是把所有模型的知识都塞进一次请求。</p>
+  <p>更进一步，<strong>专家包</strong>把"角色人格 + 方法论 + 输出规范"打包成一个可切换的身份层。从提示词角度看，这等价于给系统提示词换了一套高优先级的先验——比在用户消息里写"你是一位资深分析师"要稳固得多，因为它不在对话历史里、不会被后续轮次稀释。</p>
+
+  <h4 id="s1-2">1.2 上下文组装管线：一次请求里的六个层</h4>
+
+  <p>"原生提示词生成"真正发生的地方，是每一轮推理前的组装时刻。把可观察到的信息源按<strong>稳定性</strong>排序，会得到一个从"几乎不变"到"每轮都变"的堆栈：</p>
+
+  <figure>
+    <svg viewBox="0 0 680 322" role="img" aria-label="上下文组装的分层结构">
+      <text x="16" y="26" font-size="11" font-weight="700" fill="#8b95a3" letter-spacing="1">稳定 · 长期</text>
+      <text x="664" y="316" font-size="11" font-weight="700" fill="#8b95a3" text-anchor="end" letter-spacing="1">易变 · 单轮</text>
+      <line x1="16" y1="34" x2="16" y2="300" stroke="#dfe4ea" stroke-width="1"/>
+      <line x1="16" y1="300" x2="664" y2="300" stroke="#dfe4ea" stroke-width="1"/>
+
+      <!-- L1 identity -->
+      <rect x="46" y="40" width="418" height="36" rx="5" fill="#eef1f7" stroke="#d5dbe5"/>
+      <text x="60" y="63" font-size="12.5" font-weight="700" fill="#1c2330">① 身份层</text>
+      <text x="140" y="63" font-size="11.5" fill="#545e6d">行为准则、人格、边界（相当于"宪法"）</text>
+      <text x="476" y="63" font-size="11" fill="#8b95a3">全局常量</text>
+
+      <!-- L2 tools -->
+      <rect x="62" y="82" width="402" height="36" rx="5" fill="#eef1f7" stroke="#d5dbe5"/>
+      <text x="76" y="105" font-size="12.5" font-weight="700" fill="#1c2330">② 能力层</text>
+      <text x="156" y="105" font-size="11.5" fill="#545e6d">工具清单 + 参数 schema（决定"能做什么"）</text>
+      <text x="476" y="105" font-size="11" fill="#8b95a3">随连接器变</text>
+
+      <!-- L3 domain -->
+      <rect x="78" y="124" width="386" height="36" rx="5" fill="#e8eefc" stroke="#c9d7f5"/>
+      <text x="92" y="147" font-size="12.5" font-weight="700" fill="#233a6e">③ 领域层</text>
+      <text x="172" y="147" font-size="11.5" fill="#43506a">专家包 / Skill（按需全文加载）</text>
+      <text x="476" y="147" font-size="11" fill="#8b95a3">按任务切换</text>
+
+      <!-- L4 project -->
+      <rect x="94" y="166" width="370" height="36" rx="5" fill="#e8eefc" stroke="#c9d7f5"/>
+      <text x="108" y="189" font-size="12.5" font-weight="700" fill="#233a6e">④ 项目层</text>
+      <text x="188" y="189" font-size="11.5" fill="#43506a">工作空间、项目结构、长期记忆</text>
+      <text x="476" y="189" font-size="11" fill="#8b95a3">按会话/项目</text>
+
+      <!-- L5 task -->
+      <rect x="110" y="208" width="354" height="36" rx="5" fill="#fdf3e3" stroke="#f0dcb8"/>
+      <text x="124" y="231" font-size="12.5" font-weight="700" fill="#7a4a08">⑤ 任务层</text>
+      <text x="204" y="231" font-size="11.5" fill="#6b5330">用户 query + 附件 + @引用 + 历史</text>
+      <text x="476" y="231" font-size="11" fill="#8b95a3">每轮</text>
+
+      <!-- L6 runtime -->
+      <rect x="126" y="250" width="338" height="36" rx="5" fill="#e6f4f1" stroke="#b9dfd8"/>
+      <text x="140" y="273" font-size="12.5" font-weight="700" fill="#0b5b52">⑥ 运行时层</text>
+      <text x="220" y="273" font-size="11.5" fill="#2c5f59">时间、环境、连接器状态、钩子注入</text>
+      <text x="476" y="273" font-size="11" fill="#8b95a3">精确到秒</text>
+    </svg>
+    <figcaption>图 1　上下文组装的六层堆栈。越靠上越稳定、越像"宪法"；越靠下越具体、越像"案卷"。设计要点是让稳定性与优先级同向。</figcaption>
+  </figure>
+
+  <p>这六层的排布遵循三条隐性规则，值得单独拎出来说：</p>
+  <ol class="tight">
+    <li><strong>稳定性与优先级同向。</strong>越不容易变的内容放越前、给越高权重。这样模型的"行为基线"不会被单轮输入轻易推翻，也避免了用户消息里的一句话覆盖掉全部安全边界。</li>
+    <li><strong>按需加载而非全量常驻。</strong>Skill 的全文、参考资料、模型特性表都不在一开始就进入上下文，只在触发时引入。这既省 token，也减少注意力稀释（见第四部分 4.4）。</li>
+    <li><strong>数据与指令显式分区。</strong>附件、引用文件、页面抓取内容都被包在明确的边界里，而不是和指令混在一段自然语言中。这是缓解"提示词注入"的结构性手段，也顺带提升了模型对指令的遵循度。</li>
+  </ol>
+
+  <h4 id="s1-3">1.3 设计思路：把"提示词"重新定义为"任务契约"</h4>
+
+  <p>看官方文档的措辞会发现一个倾向：它几乎不谈"提示词技巧"，而反复谈<em>目标、输入、输出格式、约束条件</em>这四件事。文档明确建议用户在任务描述里补充：目标是什么、输入是什么、希望得到什么格式、有哪些约束（风格、字数、截止时间）。这四要素其实就是一份最小可执行契约。</p>
+
+  <p>这个取向背后有一条重要判断：<strong>Agent 场景下，提示词的作用从"描述任务"变成了"约束行为"。</strong>对话式 AI 的提示词只需要说清"写什么"，而 Agent 的提示词必须说清"允许做什么、不允许做什么、做到什么程度算完成、失败了怎么收场"。因为 Agent 会真的动文件、真的发请求，模糊的指令会变成不可逆的副作用。</p>
+
+  <p>由此衍生出四个设计要点：</p>
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr><th style="width:130px">设计要点</th><th>具体做法</th><th>解决的问题</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="hd">模式即策略</td>
+        <td>提供"只回答 / 直接执行 / 先规划再执行"三档。选择模式本身就是在给提示词附加执行策略——Plan 模式相当于强制模型先输出方案、等人确认后才允许产生副作用。</td>
+        <td>不可逆操作被前置拦截</td>
+      </tr>
+      <tr>
+        <td class="hd">上下文优先于形容词</td>
+        <td>用 <code>@</code> 引用文件、贴截图、上传附件、指定工作空间，让模型"看材料"而不是"猜"。文档把"输入是什么"列为必填项。</td>
+        <td>幻觉与凭空发挥</td>
+      </tr>
+      <tr>
+        <td class="hd">验收标准显式化</td>
+        <td>把"什么算做完"写进任务描述，而不是留给模型自己判断。结果区提供产物、文件、变更三个视角供人复核。</td>
+        <td>交付物看似完成实则跑偏</td>
+      </tr>
+      <tr>
+        <td class="hd">能力可组合</td>
+        <td>专家（角色与方法论）、技能（流程与脚本）、连接器（外部数据与动作）、资料库（私有知识）四类扩展互相正交，按任务拼装。</td>
+        <td>一个巨型提示词无法维护</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>顺带一提，业界教程把这种契约式写法归纳成 <strong>BRIEF</strong> 五段式，可以拿来当检查清单：<em>B</em>ounded outcome（一个有终点的交付物）、<em>R</em>eferences（权威来源，精确到文件与日期）、<em>I</em>nstructions（必须包含的内容与格式）、<em>E</em>xclusions（不许做的事）、<em>F</em>inal checks（交付前怎么自检）。它和 WorkBuddy 文档的四要素基本同构，多出来的是"排除项"和"自检"——这两项在 Agent 场景里恰恰最关键。</p>
+
+  <h4 id="s1-4">1.4 取舍与边界</h4>
+  <p>这套设计的代价也很清楚。其一，它把负担部分转移给了用户：不写清目标和约束，效果就会明显下降——因为系统选择了"不替用户编造需求"，这在长周期任务上是正确的，在随手一问时就显得啰嗦。其二，模板层天然滞后于模型演进，模板里固化的写法可能对新模型已经过时。其三，多 Skill 并存时存在触发歧义：两个技能都声称适用，装配层只能靠描述文本的匹配度取舍，这是当前所有 Skill 体系的共同软肋。</p>
+</section>
+
+
+<!-- ==================== 第二部分 ==================== -->
+<section id="s2">
+  <h2><span class="num">二</span> / Part Two</h2>
+  <h3>GitHub 上的代表性开源实现</h3>
+
+  <p class="lead">下面七个项目，恰好覆盖了四条互不重叠的技术路线。我按"提示词从哪里来"把它们分成三族（外加一族特殊的权重层方案），每一族先讲共同架构，再逐项拆到实现细节。</p>
+
+  <h4 id="s2-0">2.0 三个技术家族</h4>
+
+  <figure>
+    <svg viewBox="0 0 680 250" role="img" aria-label="三个技术家族的流程对比">
+      <!-- family A -->
+      <rect x="14" y="30" width="206" height="196" rx="8" fill="#ffffff" stroke="#d8dde5"/>
+      <rect x="14" y="30" width="206" height="30" rx="8" fill="#e6f4f1"/>
+      <text x="117" y="50" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0d7268">A 模板与范式驱动</text>
+      <text x="30" y="84" font-size="11" fill="#545e6d">人写骨架 → 填空 → 交付</text>
+      <rect x="30" y="96" width="174" height="24" rx="4" fill="#f4f6f9" stroke="#e0e5ec"/>
+      <text x="117" y="112" text-anchor="middle" font-size="10.5" fill="#3d4653">Role / Skills / Workflow</text>
+      <rect x="30" y="128" width="174" height="24" rx="4" fill="#f4f6f9" stroke="#e0e5ec"/>
+      <text x="117" y="144" text-anchor="middle" font-size="10.5" fill="#3d4653">占位符 / 变量 / few-shot</text>
+      <rect x="30" y="160" width="174" height="24" rx="4" fill="#f4f6f9" stroke="#e0e5ec"/>
+      <text x="117" y="176" text-anchor="middle" font-size="10.5" fill="#3d4653">输出 schema 校验</text>
+      <text x="117" y="206" text-anchor="middle" font-size="10.5" fill="#0d7268">零调用成本 · 靠人验收</text>
+
+      <!-- family B -->
+      <rect x="237" y="30" width="206" height="196" rx="8" fill="#ffffff" stroke="#d8dde5"/>
+      <rect x="237" y="30" width="206" height="30" rx="8" fill="#eaeffc"/>
+      <text x="340" y="50" text-anchor="middle" font-size="12.5" font-weight="700" fill="#2b54c4">B 生成—评估—选择</text>
+      <text x="253" y="84" font-size="11" fill="#545e6d">候选池 → 跑用例 → 排序</text>
+      <rect x="253" y="96" width="174" height="24" rx="4" fill="#f4f6f9" stroke="#e0e5ec"/>
+      <text x="340" y="112" text-anchor="middle" font-size="10.5" fill="#3d4653">元提示词生成 N 个候选</text>
+      <rect x="253" y="128" width="174" height="24" rx="4" fill="#f4f6f9" stroke="#e0e5ec"/>
+      <text x="340" y="144" text-anchor="middle" font-size="10.5" fill="#3d4653">用例批跑 + 裁判/指标打分</text>
+      <rect x="253" y="160" width="174" height="24" rx="4" fill="#f4f6f9" stroke="#e0e5ec"/>
+      <text x="340" y="176" text-anchor="middle" font-size="10.5" fill="#3d4653">Elo / 准确率 / 贝叶斯搜索</text>
+      <text x="340" y="206" text-anchor="middle" font-size="10.5" fill="#2b54c4">按 token 计费 · 靠指标验收</text>
+
+      <!-- family C -->
+      <rect x="460" y="30" width="206" height="196" rx="8" fill="#ffffff" stroke="#d8dde5"/>
+      <rect x="460" y="30" width="206" height="30" rx="8" fill="#fdf3e3"/>
+      <text x="563" y="50" text-anchor="middle" font-size="12.5" font-weight="700" fill="#a55a08">C 声明式编译与约束</text>
+      <text x="476" y="84" font-size="11" fill="#545e6d">声明类型 → 编译 → 掩码</text>
+      <rect x="476" y="96" width="174" height="24" rx="4" fill="#f4f6f9" stroke="#e0e5ec"/>
+      <text x="563" y="112" text-anchor="middle" font-size="10.5" fill="#3d4653">类型 / 语法 / Signature</text>
+      <rect x="476" y="128" width="174" height="24" rx="4" fill="#f4f6f9" stroke="#e0e5ec"/>
+      <text x="563" y="144" text-anchor="middle" font-size="10.5" fill="#3d4653">编译期展开 schema 与提示</text>
+      <rect x="476" y="160" width="174" height="24" rx="4" fill="#f4f6f9" stroke="#e0e5ec"/>
+      <text x="563" y="176" text-anchor="middle" font-size="10.5" fill="#3d4653">解析修复 / logits 掩码</text>
+      <text x="563" y="206" text-anchor="middle" font-size="10.5" fill="#a55a08">结构零错误 · 靠编译器验收</text>
+    </svg>
+    <figcaption>图 2　三大技术家族。A 优化的是"人写什么"，B 优化的是"哪段文字得分高"，C 优化的是"生成过程被什么约束"。</figcaption>
+  </figure>
+
+  <h4 id="s2-a">2.1 家族 A：模板与范式驱动</h4>
+  <p>这一族的共同特征是<strong>没有反馈回路</strong>：提示词的质量在上游由人的方法论决定，下游只做结构校验，不做效果评估。优点是零额外调用成本、完全可解释、可版本化；缺点是质量天花板就是作者的水平。</p>
+
+  <div class="proj">
+    <div class="proj-hd">
+      <span class="name">langgptai/LangGPT</span>
+      <span class="zh">结构化提示词范式</span>
+      <span class="badge b-a">家族 A</span>
+    </div>
+    <div class="proj-bd">
+      <dl class="kv">
+        <dt>定位</dt><dd>把提示词设计类比为编程语言：有模块、有变量、有命令、有初始化，因此可复用、可维护、可协作。</dd>
+        <dt>架构</dt><dd>DSL 就是 Markdown。核心骨架为 <code>Role → Profile → Goal → Skills → Rules → Workflow → Initialization</code>，可选 <code>Commands</code>（斜杠命令）与 <code>Reminder</code>（长对话中反复锚定角色）。</dd>
+        <dt>关键机制</dt><dd>它的"生成器"其实是模型本身。因为这套结构在中文语料里传播极广、已进入主流模型的训练分布，只需说"用 LangGPT 方式写一个提示词"即可触发。这本身是一个值得注意的现象：<em>一种提示词范式被广泛采用后，会反向沉淀为模型的先验知识。</em></dd>
+        <dt>实现细节</dt><dd>较新版本把 <code>Goal</code> 细化为三件套：Outcome（要交付什么）、Done Criteria（怎样算做好）、Non-Goals（明确不做什么）。前者对治"目标漂移"，后者对治"范围膨胀"——这是从"角色扮演模板"向"工程契约"演进的关键一步。</dd>
+        <dt>学术化</dt><dd>arXiv:2402.16929 将其形式化为"面向 LLM 的结构化可复用提示词设计框架"，逐项对应编程语言要素。生态里还有 PromptVer（提示词语义化版本）、Minstrel（多 Agent 自动生成提示词）。</dd>
+        <dt>局限</dt><dd>无自动评估，好坏全凭人判；模板套壳极易产出"形式完整、内容空洞"的提示词——字段都填了，但没有一条是可执行的约束。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="proj">
+    <div class="proj-hd">
+      <span class="name">promptslab/Promptify</span>
+      <span class="zh">任务模板引擎</span>
+      <span class="badge b-a">家族 A</span>
+    </div>
+    <div class="proj-bd">
+      <dl class="kv">
+        <dt>定位</dt><dd>自我描述为"LLM 版 scikit-learn"：把 NLP 任务抽象成一致的类接口，用两三行代码拿到结构化结果。</dd>
+        <dt>架构</dt><dd>四层：<code>Task</code> 基类 → 任务子类（<code>NER</code> / <code>Classify</code> / <code>QA</code> / <code>Summarize</code> / <code>ExtractRelations</code> / <code>GenerateSQL</code> …）→ Pydantic 输出 schema → LiteLLM 统一后端（一套代码切 100+ provider）。</dd>
+        <dt>关键机制</dt><dd>模板装配：任务指令 + 领域提示（<code>domain="medical"</code>）+ few-shot 示例 + schema 说明，拼成最终提示词。所以它属于"模板族"——用任务类型索引到对应模板，而非搜索最优措辞。</dd>
+        <dt>实现细节</dt><dd>两个亮点。一是 <strong>safe parser</strong>：对不支持原生结构化输出的 provider，用 JSON 补全兜底而不是 <code>eval()</code>，安全性上比早期实现更严谨。二是<strong>把评估做进库</strong>：<code>evaluate(task, dataset, metrics=[...])</code> 直接算 precision / recall / F1，让"提示词有没有变好"第一次有了可跑的答案。</dd>
+        <dt>局限</dt><dd>v3 已收敛为"任务引擎"，提示词优化不是主路径；模板与任务强绑定，超出内置任务类型就要自己写 <code>Task</code> + schema。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <h4 id="s2-b">2.2 家族 B：生成—评估—选择</h4>
+  <p>这一族引入了反馈回路，因此有了"自动变好"的可能。它们的共同架构是四段：<strong>候选生成 → 用例批跑 → 信号评估 → 择优/迭代</strong>。差别在于"信号"从哪来（LLM 裁判 / 客观指标 / 人工标注）以及"搜索"怎么走（锦标赛 / 坐标上升 / 贝叶斯优化 / 进化）。</p>
+
+  <div class="proj">
+    <div class="proj-hd">
+      <span class="name">mshumer/gpt-prompt-engineer</span>
+      <span class="zh">锦标赛式提示词搜索</span>
+      <span class="badge b-b">家族 B</span>
+    </div>
+    <div class="proj-bd">
+      <dl class="kv">
+        <dt>定位</dt><dd>作者的原话是"提示词工程像炼金术，只能靠试"——这个项目把"试"自动化成一场锦标赛。</dd>
+        <dt>架构</dt><dd>单文件 notebook，一个入口函数 <code>generate_optimal_prompt(description, test_cases, number_of_prompts)</code>，内部四个阶段串行。</dd>
+        <dt>流程</dt><dd>
+          <ol class="tight" style="margin:0">
+            <li><b>生成</b>：用元提示词让强模型就同一用例描述产出 N 个风格不同的候选提示词（N 建议从 10 起，因为成本随 N 线性上涨）。</li>
+            <li><b>批跑</b>：每个候选 × 每个测试用例各调一次模型，收集输出。生成与评判用强模型、被测生成用便宜模型，是它控制成本的关键配置。</li>
+            <li><b>成对裁判</b>：把同一用例下两个候选的输出交给裁判模型，判定 A 更好 / B 更好 / 平局。</li>
+            <li><b>Elo 排名</b>：每个候选初始 1200 分，按每场对局结果更新，最终输出降序表格。</li>
+          </ol>
+        </dd>
+        <dt>为什么是 Elo 而不是打分</dt><dd>这是整个设计里最巧妙的一步。<strong>绝对打分</strong>（"给这段输出打 1–10 分"）在不同批次间不可比、且模型倾向于给中庸分；<strong>相对比较</strong>只要求裁判回答"哪个更好"，判断更稳、方差更小，还能顺带解决"没有标准答案"的开放性任务。代价是只能得到序关系，不能得到绝对质量。</dd>
+        <dt>变体</dt><dd>分类版改用 ground truth 直接算准确率，绕过 LLM 裁判；Claude 版支持多输入变量并自动生成测试用例；还有 Opus→Haiku 蒸馏版，用强模型产出高质量示例来引导小模型。</dd>
+        <dt>局限</dt><dd>单一裁判存在同族偏好（self-preference bias）；用例少于十条时 Elo 排名不稳；A/B 顺序需要随机化以抑制位置偏差；最终选出的提示词只在被测模型上验证过，跨模型不保证迁移。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="proj">
+    <div class="proj-hd">
+      <span class="name">linshenkx/prompt-optimizer</span>
+      <span class="zh">产品化的提示词资产工作台</span>
+      <span class="badge b-b">家族 B</span>
+    </div>
+    <div class="proj-bd">
+      <dl class="kv">
+        <dt>定位</dt><dd>把提示词当作<strong>可版本化的资产</strong>来管理：写、优、测、评、存、复用，形成闭环。</dd>
+        <dt>架构</dt><dd>同一套核心跑在五种形态上——Web、桌面端、Chrome 扩展、Docker、MCP Server。纯客户端处理，模型请求直连 provider，不经中间服务器（既省成本也避免密钥外流）。Provider 适配层覆盖 OpenAI / Gemini / DeepSeek / Grok / 智谱 / SiliconFlow / MiniMax 等。</dd>
+        <dt>关键机制</dt><dd>模板 + 元提示词驱动。优化动作分三种：<b>系统提示词优化</b>、<b>用户提示词优化</b>、<b>迭代优化</b>（对已成熟的提示词按具体诉求改进）。三者用的是不同的元提示词模板——这区分很重要，因为系统提示词要求"稳定、可长期生效、覆盖边界"，用户提示词要求"具体、一次性、带材料"，两者的优化目标根本不同。</dd>
+        <dt>评估设计</dt><dd>提供四档：结构分析（把提示词拆成意图/约束/输出要求，指出缺项）、单结果评估、多结果对比评估、以及<strong>评估驱动的智能重写</strong>（用评估结论反过来改提示词）。这一层把它和纯模板工具区分开了——它有反馈回路。</dd>
+        <dt>工程细节</dt><dd>上下文变量管理与批量替换、多轮对话测试、Function Calling 测试；收藏夹带版本历史与可复现示例；MCP 暴露 <code>optimize-user-prompt</code> / <code>optimize-system-prompt</code> / <code>iterate-prompt</code> 三个工具，可被其他 AI 应用直接调用。图像侧另有 T2I/I2I/多图模式，把一句话扩写成可控的视觉提示词。</dd>
+        <dt>局限</dt><dd>优化质量的上限就是所选基座模型的提示词写作能力；评估仍是 LLM 主观判断而非客观指标，同一提示词换裁判模型结论可能翻转。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="proj">
+    <div class="proj-hd">
+      <span class="name">stanfordnlp/dspy</span>
+      <span class="zh">把提示词当参数来编译</span>
+      <span class="badge b-b">家族 B / C 跨界</span>
+    </div>
+    <div class="proj-bd">
+      <dl class="kv">
+        <dt>定位</dt><dd>不做"提示词生成"，做"提示词编译"。人只声明输入输出语义与评价指标，具体的措辞与示例由优化器搜出来。</dd>
+        <dt>三层抽象</dt><dd>
+          <b>Signature</b>：声明 <code>question -&gt; answer</code> 或类形式，docstring 即初始指令；<br>
+          <b>Module</b>：<code>Predict</code> / <code>ChainOfThought</code> / <code>ReAct</code> / <code>ProgramOfThought</code>，把签名包成可组合单元，每个模块持有自己的 instructions 与 demos；<br>
+          <b>Adapter</b>：把签名 + 示例渲染成目标模型需要的具体格式（chat / JSON / XML）。
+        </dd>
+        <dt>优化器谱系</dt><dd>这是它最值得细看的部分，几代方法对应几种搜索策略：
+          <ul class="tight" style="margin:6px 0 0">
+            <li><b>LabeledFewShot</b>：直接抽 k 个标注样本当示例。基线。</li>
+            <li><b>BootstrapFewShot</b>：让教师程序跑训练集，只保留通过 metric 的轨迹，把"输入 → 成功推理过程"作为示例。妙处是<em>不用人写思维链</em>，思维链由模型自己跑出来再筛选。</li>
+            <li><b>BootstrapFewShotWithRandomSearch</b>：多次自举 + 随机搜索示例组合。</li>
+            <li><b>COPRO</b>：只动指令，坐标上升——每轮针对一处生成候选措辞、评分、保留更优者。</li>
+            <li><b>MIPROv2</b>：同时优化指令与示例。先用数据集摘要 + 程序代码 + 提示让强模型"有依据地"提出指令候选，再用贝叶斯优化（TPE）在组合空间里搜，<code>auto</code> 参数控制预算档位。</li>
+            <li><b>GEPA</b>：反思式进化。关键创新是 <b>metric 可以返回自然语言反馈</b>（<code>Prediction(score=..., feedback="...")</code>），反思模型读到"为什么失败"再改写指令；配合 Pareto 采样保留多样候选，避免早熟收敛。</li>
+          </ul>
+        </dd>
+        <dt>实现细节</dt><dd>优化产物是可序列化的状态文件（每个 predictor 的指令与示例），<code>optimized.save("x.json")</code> 存盘；训练集供反思、验证集供选优，官方明确建议另留测试集，否则报告的是过拟合后的分数。</dd>
+        <dt>关键洞察</dt><dd>同一段程序在不同模型上会被优化成不同的提示词——这从工程上证明了"提示词没有普适最优解，只有针对特定模型的最优解"。官方举的例子是优化后的小模型得分超过未优化的大模型。</dd>
+        <dt>局限</dt><dd>需要训练集与可计算的 metric，冷启动门槛高；一次编译的调用成本不低；metric 设计得不好，优化器会精准地优化错的东西。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <p>家族 B 还有一个极端的变体值得单列：<strong>microsoft/LMOps 的 Promptist</strong>。它不生成文本，而是<strong>训练一个改写器</strong>——两阶段，先用筛选出的高质量样本做监督微调，再用强化学习（PPO）继续优化，奖励来自生成图像与提示词的 CLIP 相似度，并用 KL 惩罚约束改写器不要偏离原意太远。使用时在输入后加上 <code>Rephrase:</code> 触发，beam search 出多个候选。它的意义在于揭示了另一种可能：<em>提示词优化可以被编译进权重，运行时零额外开销</em>。代价是完全绑定特定生成模型与偏好，不可解释、不可迁移。学术上的源头则是 AutoPrompt 一类工作——用梯度信号引导离散 token 的搜索（hotflip 式候选替换 + beam search），把"哪几个词最有效"变成一个可优化的组合问题。</p>
+
+  <h4 id="s2-c">2.3 家族 C：声明式编译与约束解码</h4>
+  <p>这一族换了问题：不再问"怎么写出更好的提示词"，而问"<strong>怎么让提示词变成带保证的程序</strong>"。它们把提示词从"一段希望模型照做的文字"降级为"一个可编译、可校验、可约束的中间产物"。</p>
+
+  <div class="proj">
+    <div class="proj-hd">
+      <span class="name">guidance-ai/guidance</span>
+      <span class="zh">交织控制与生成的提示词程序</span>
+      <span class="badge b-c">家族 C</span>
+    </div>
+    <div class="proj-bd">
+      <dl class="kv">
+        <dt>定位</dt><dd>把提示词写成 Python 程序：控制流（条件、循环、函数调用）与生成动作在同一个流程里交织，而不是"先拼字符串再一次性发出去"。</dd>
+        <dt>核心 API</dt><dd><code>gen()</code> 生成、<code>select()</code> 从枚举里选、<code>regex=</code> 正则约束、<code>json(schema=Pydantic)</code> 结构化、<code>@guidance</code> 自定义可组合函数、<code>capture()</code> 捕获、<code>one_or_more()</code> 重复。模型对象<strong>不可变</strong>（<code>lm += ...</code> 返回副本），因此可以分支、可以回滚——这是它能做搜索式生成的前提。</dd>
+        <dt>约束怎么实现</dt><dd>正则 / 上下文无关文法 / JSON Schema 都被编译成状态机。解码每一步，把当前状态下非法的 token 的 logits 置为负无穷，只在合法集合上做 softmax。所以格式不是"大概率正确"，而是<strong>结构性不可能出错</strong>。</dd>
+        <dt>两个精巧机制</dt><dd>
+          <b>Token fast-forwarding</b>：语法已经确定的 token 不必让模型生成，直接插入并跳过前向计算。生成 HTML 时，一旦模型吐出 <code>&lt;/</code>，后面的标签名往往可以补齐——省下的是真实的 GPU 时间。<br>
+          <b>Token healing</b>：BPE 分词会在提示词末尾留下"半截 token"，导致模型对第一个生成 token 的分布产生偏差。它的做法是回退到 token 边界重新生成，再拼接回去，消除这个系统性误差。
+        </dd>
+        <dt>工程化</dt><dd><code>@guidance(stateless=True)</code> 把函数编译成可组合的语法片段；<code>Mock</code> 模型配合 <code>grammar.match()</code> 可以完全离线验证语法，调试约束时不烧 API 额度。</dd>
+        <dt>局限</dt><dd>硬约束需要能访问 logits（Transformers / llama.cpp 等本地后端）；对只能拿到文本的闭源 API 只能降级为"强制前缀"等软手段。语法写得再严也只能保证<em>合法</em>，不能保证<em>正确</em>——一个语法完美的 JSON 可以是语义垃圾。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="proj">
+    <div class="proj-hd">
+      <span class="name">BoundaryML/baml</span>
+      <span class="zh">面向 LLM 的编程语言</span>
+      <span class="badge b-c">家族 C</span>
+    </div>
+    <div class="proj-bd">
+      <dl class="kv">
+        <dt>定位</dt><dd>不满足于做模板库，直接造了一门语言：有 AST、有类型推断、有中间表示、有字节码虚拟机（BEX VM）、有栈预算与类型化 panic。把"调模型"当成一等语言特性。</dd>
+        <dt>语言构成</dt><dd><code>class</code> 声明输出 schema（字段可带 <code>@description</code> / <code>@alias</code> 注解）；<code>function</code> 声明签名 + client + prompt 模板；<code>test</code> 块内嵌测试用例。<code>.baml</code> 文件是唯一真相源。</dd>
+        <dt>schema-aligned parsing</dt><dd>这个名字涵盖三件常被混淆的事：<br>
+          ① <b>把类型写进提示词</b>——模板里的 <code>{{ ctx.output_format }}</code> 会自动把返回类型渲染成模型可读的 schema 说明，类型改了提示词跟着变，不会漂移；<br>
+          ② <b>容错解析</b>——缺引号、多余前后缀、字段别名、流式半截 JSON，都在客户端修复；<br>
+          ③ <b>错误回灌重试</b>——解析失败时把具体错误信息喂回模型重试，而不是盲目重发。
+        </dd>
+        <dt>codegen</dt><dd><code>baml generate</code> 产出 <code>baml_client</code>，把函数变成宿主语言的强类型方法（Python / TypeScript / Go / Ruby 等），返回值是真实的类实例而不是裸字符串。IDE 里有补全，编译期就能发现字段名写错。</dd>
+        <dt>与传统写法的差别</dt><dd>手写 <code>f-string</code> 拼提示词时，类型定义、提示词文本、解析逻辑是三份各自演化的副本，改一处必然漏两处。BAML 把它们合并成一个声明，让"提示词与 schema 的一致性"从人的纪律变成编译器的职责。</dd>
+        <dt>局限</dt><dd>引入新语言与构建步骤，团队要付学习成本；复杂业务控制流仍然要回到宿主语言，跨语言边界有胶水成本。</dd>
+      </dl>
+    </div>
+  </div>
+
+  <p>把 DSPy 放到这张图里看会更清楚：它的 Signature/Module 是 C 家族的思路（声明意图、由编译器决定措辞），它的 Optimizer 是 B 家族的思路（用指标搜索）。所以它实际上是<strong>用 B 的方法去实现 C 的理想</strong>——这也是为什么它能同时被当作"提示词优化器"和"提示词编程框架"使用。</p>
+</section>
+
+
+<!-- ==================== 第三部分 ==================== -->
+<section id="s3">
+  <h2><span class="num">三</span> / Part Three</h2>
+  <h3>横向对比：共性、差异与选型</h3>
+
+  <h4 id="s3-1">3.1 五条共性原理</h4>
+
+  <p>把七个项目摊平来看，它们在方法论上的重合度比表面差异大得多。</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:150px">共性</th><th>内涵</th><th>在各方案中的体现</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="hd">① 槽位补全</td>
+        <td>把"角色 / 任务 / 材料 / 格式 / 约束 / 示例"六个槽位填满，提示词的可用性就跃升一个台阶。</td>
+        <td>LangGPT 的模板就是六个槽位的具名化；WorkBuddy 文档的四要素是同一件事的收敛版；Promptify 用 schema 补"格式"槽。</td>
+      </tr>
+      <tr>
+        <td class="hd">② 条件分布塑形</td>
+        <td>所有生成动作的物理本质，都是把 <code>p(y|P)</code> 从弥散推向尖锐。</td>
+        <td>越具体的约束 → 分布越尖；越多的示例 → 分布越像目标模式。第四部分会展开机制。</td>
+      </tr>
+      <tr>
+        <td class="hd">③ 生成与评估分离</td>
+        <td>只要系统能判断"哪个更好"，它就能自动改进；不能判断，就只能靠人。</td>
+        <td>gpt-prompt-engineer 用 LLM 裁判，DSPy 用 metric，Promptify 用 P/R/F1，guidance 用语法合法性——四种"判断"，四种自动化上限。</td>
+      </tr>
+      <tr>
+        <td class="hd">④ 相对优于绝对</td>
+        <td>在缺乏标准答案时，成对比较比绝对打分更稳。</td>
+        <td>Elo 锦标赛、Pareto 前沿采样、A/B 对比评估，本质都在把"打分"降解为"排序"。</td>
+      </tr>
+      <tr>
+        <td class="hd">⑤ 结构即约束</td>
+        <td>声明式的结构（类型、语法、模板）比自然语言的祈使句更可靠。</td>
+        <td>BAML 的 class、guidance 的文法、DSPy 的 Signature，都在用"结构"替代"请求"。</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4 id="s3-2">3.2 差异矩阵</h4>
+
+  <p>真正的分野在四个维度上：优化对象、验收信号、时机、保证强度。</p>
+
+  <figure>
+    <svg viewBox="0 0 680 214" role="img" aria-label="四类方案的定位坐标">
+      <text x="20" y="16" font-size="10.5" fill="#8b95a3" font-weight="600">保证强度 →</text>
+      <text x="20" y="200" font-size="10.5" fill="#8b95a3" font-weight="600">低成本</text>
+      <text x="660" y="200" font-size="10.5" fill="#8b95a3" text-anchor="end" font-weight="600">高成本 →</text>
+      <!-- axes -->
+      <line x1="20" y1="182" x2="660" y2="182" stroke="#dfe4ea" stroke-width="1"/>
+      <line x1="20" y1="30" x2="20" y2="182" stroke="#dfe4ea" stroke-width="1"/>
+      <!-- grid labels -->
+      <line x1="20" y1="106" x2="660" y2="106" stroke="#f0f2f6" stroke-width="1" stroke-dasharray="3 3"/>
+      <text x="26" y="44" font-size="10" fill="#c0c7d2">结构确定</text>
+      <text x="26" y="172" font-size="10" fill="#c0c7d2">概率输出</text>
+
+      <!-- A: LangGPT -->
+      <circle cx="112" cy="160" r="26" fill="#e6f4f1" stroke="#9fd0c8" stroke-width="1.5"/>
+      <text x="112" y="158" text-anchor="middle" font-size="10.5" font-weight="700" fill="#0d7268">LangGPT</text>
+      <text x="112" y="172" text-anchor="middle" font-size="9" fill="#2c5f59">模板范式</text>
+
+      <!-- A: Promptify -->
+      <circle cx="214" cy="128" r="27" fill="#e6f4f1" stroke="#9fd0c8" stroke-width="1.5"/>
+      <text x="214" y="126" text-anchor="middle" font-size="10.5" font-weight="700" fill="#0d7268">Promptify</text>
+      <text x="214" y="140" text-anchor="middle" font-size="9" fill="#2c5f59">schema 校验</text>
+
+      <!-- B: prompt-optimizer -->
+      <circle cx="330" cy="146" r="29" fill="#eaeffc" stroke="#b3c6f0" stroke-width="1.5"/>
+      <text x="330" y="142" text-anchor="middle" font-size="10" font-weight="700" fill="#2b54c4">prompt-</text>
+      <text x="330" y="154" text-anchor="middle" font-size="10" font-weight="700" fill="#2b54c4">optimizer</text>
+
+      <!-- B: gpt-prompt-engineer -->
+      <circle cx="392" cy="112" r="30" fill="#eaeffc" stroke="#b3c6f0" stroke-width="1.5"/>
+      <text x="392" y="108" text-anchor="middle" font-size="9.5" font-weight="700" fill="#2b54c4">gpt-prompt-</text>
+      <text x="392" y="119" text-anchor="middle" font-size="9.5" font-weight="700" fill="#2b54c4">engineer</text>
+
+      <!-- B: DSPy -->
+      <circle cx="500" cy="78" r="32" fill="#eaeffc" stroke="#b3c6f0" stroke-width="1.5"/>
+      <text x="500" y="76" text-anchor="middle" font-size="11" font-weight="700" fill="#2b54c4">DSPy</text>
+      <text x="500" y="89" text-anchor="middle" font-size="9" fill="#3d4a66">程序化 + 优化</text>
+
+      <!-- C: guidance -->
+      <circle cx="578" cy="52" r="28" fill="#fdf3e3" stroke="#e8c78e" stroke-width="1.5"/>
+      <text x="578" y="50" text-anchor="middle" font-size="10.5" font-weight="700" fill="#a55a08">guidance</text>
+      <text x="578" y="63" text-anchor="middle" font-size="9" fill="#7a4a08">logits 掩码</text>
+
+      <!-- C: BAML -->
+      <circle cx="646" cy="86" r="26" fill="#fdf3e3" stroke="#e8c78e" stroke-width="1.5"/>
+      <text x="646" y="84" text-anchor="middle" font-size="10.5" font-weight="700" fill="#a55a08">BAML</text>
+      <text x="646" y="97" text-anchor="middle" font-size="9" fill="#7a4a08">编译期保证</text>
+    </svg>
+    <figcaption>图 3　定位坐标。横轴是"让提示词变好的代价"（调用成本 + 工程复杂度），纵轴是"输出被保证的程度"。越靠右上越硬，也越重。</figcaption>
+  </figure>
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th style="width:120px">维度</th>
+        <th>A 模板派</th>
+        <th>B 搜索派</th>
+        <th>C 编译派</th>
+        <th>权重派（Promptist）</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td class="hd">优化对象</td><td>文本骨架</td><td>文本措辞 / 示例组合</td><td>程序结构 + 生成约束</td><td>模型权重</td></tr>
+      <tr><td class="hd">是否需数据</td><td>不需要</td><td>需要用例；DSPy 还需 metric</td><td>不需要（需要类型/语法）</td><td>需要偏好数据</td></tr>
+      <tr><td class="hd">验收信号</td><td>人眼</td><td>LLM 裁判 / 客观指标</td><td>编译器 / 语法 / schema</td><td>CLIP 分 + 美学分</td></tr>
+      <tr><td class="hd">保证强度</td><td>弱（靠模型配合）</td><td>弱（统计意义上的好）</td><td><strong>强（结构层面确定）</strong></td><td>无保证</td></tr>
+      <tr><td class="hd">运行时开销</td><td>0</td><td>高（数十~数百次调用）</td><td>低（约束反而省 token）</td><td>0（已内化）</td></tr>
+      <tr><td class="hd">跨模型迁移</td><td>好（结构通用）</td><td><strong>差（必须重编译）</strong></td><td>好（语法与模型无关）</td><td>不可迁移</td></tr>
+      <tr><td class="hd">可解释性</td><td>完全</td><td>低（不知道为什么好）</td><td>高（约束显式）</td><td>无</td></tr>
+      <tr><td class="hd">主要风险</td><td>形式化空洞</td><td>过拟合 + 裁判偏差</td><td>合法但错误</td><td>绑定特定模型</td></tr>
+      <tr><td class="hd">代表</td><td>LangGPT、Promptify</td><td>gpt-prompt-engineer、prompt-optimizer、DSPy</td><td>guidance、BAML</td><td>Promptist</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4 id="s3-3">3.3 选型建议</h4>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:190px">你的处境</th><th>推荐</th><th>理由</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="hd">个人日常使用，一次性任务</td>
+        <td>直接写任务简报（WorkBuddy 模式）</td>
+        <td>所有自动化方案的前期投入都大于收益；把目标/输入/格式/约束说清就是最优解。</td>
+      </tr>
+      <tr>
+        <td class="hd">要给团队沉淀一套可复用提示词</td>
+        <td>LangGPT 式结构化模板</td>
+        <td>可读、可评审、可 diff。先解决"能不能维护"，再谈"能不能更优"。</td>
+      </tr>
+      <tr>
+        <td class="hd">提示词要嵌入产品，输出必须被程序消费</td>
+        <td>BAML 或 guidance</td>
+        <td>前者胜在类型安全与多语言客户端，后者胜在本地模型上的极致控制与 token 节省。</td>
+      </tr>
+      <tr>
+        <td class="hd">有几百条标注数据，想把准确率再提 10 个点</td>
+        <td>DSPy（先 BootstrapFewShot，再 MIPROv2 / GEPA）</td>
+        <td>唯一能系统利用数据的方案；但要先确认 metric 真的衡量了你想要的东西。</td>
+      </tr>
+      <tr>
+        <td class="hd">没有标注数据，只有一堆真实输入样本</td>
+        <td>gpt-prompt-engineer 式锦标赛</td>
+        <td>用相对比较绕过"没有标准答案"，成本可控，当天能出结果。</td>
+      </tr>
+      <tr>
+        <td class="hd">要给非技术同事用</td>
+        <td>prompt-optimizer 类产品</td>
+        <td>有界面、有模板、有对比评估，学习成本最低；但要接受评估偏主观。</td>
+      </tr>
+      <tr>
+        <td class="hd">多模型混用，同一提示词要在各家都跑通</td>
+        <td>结构化模板 + 每模型特性卡（Skill + references）</td>
+        <td>因为不存在普适最优提示词，只能把"模型差异"做成可替换的知识模块。</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4 id="s3-4">3.4 三条共同边界</h4>
+
+  <p><strong>第一，生成器不能创造模型没有的能力。</strong>所有方案优化的是"把已有能力引导到正确位置"，不是"注入知识"。当任务需要模型训练数据里没有的事实时，再精巧的提示词也只能让它更流畅地编造。</p>
+
+  <p><strong>第二，评估信号的天花板就是优化效果的天花板。</strong>DSPy 官方文档里那句提醒值得抄在任何提示词工程规范的第一页：优化器会精准地优化你写的 metric，包括你写错的部分。用 LLM 当裁判时同理——裁判的偏好会被继承，包括它的长度偏好、格式偏好和同族偏好。</p>
+
+  <p><strong>第三，优化与过拟合只隔一层验证集。</strong>搜索空间越大（候选越多、迭代越久），在有限用例上过拟合的风险越高。凡是带自动优化的方案，都必须留一份既没进训练集也没进验证集的测试集，否则报告出来的提升很可能只是记住了样本。</p>
+</section>
+
+
+<!-- ==================== 第四部分 ==================== -->
+<section id="s4">
+  <h2><span class="num">四</span> / Part Four</h2>
+  <h3>AI 理解提示词的基本原理</h3>
+
+  <p class="lead">前面三部分讲的是"怎么造提示词"。这一部分换个方向：提示词进入模型之后，究竟发生了什么？理解了这条流水线，前面所有的经验法则就不再是玄学，而是一条条可以推导的结论。</p>
+
+  <h4 id="s4-1">4.1 五个阶段：从字符串到概率分布</h4>
+
+  <figure>
+    <svg viewBox="0 0 680 168" role="img" aria-label="Transformer 处理提示词的流水线">
+      <defs>
+        <marker id="ar2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" fill="#9aa4b2"/>
+        </marker>
+      </defs>
+      <rect x="8" y="46" width="106" height="62" rx="7" fill="#ffffff" stroke="#d8dde5"/>
+      <text x="61" y="68" text-anchor="middle" font-size="11.5" font-weight="700" fill="#171a20">① 分词</text>
+      <text x="61" y="86" text-anchor="middle" font-size="9.5" fill="#67707e">BPE → token id</text>
+      <text x="61" y="99" text-anchor="middle" font-size="9.5" fill="#8b95a3">"请"→[12345]</text>
+
+      <rect x="134" y="46" width="106" height="62" rx="7" fill="#ffffff" stroke="#d8dde5"/>
+      <text x="187" y="68" text-anchor="middle" font-size="11.5" font-weight="700" fill="#171a20">② 嵌入</text>
+      <text x="187" y="86" text-anchor="middle" font-size="9.5" fill="#67707e">id → d 维向量</text>
+      <text x="187" y="99" text-anchor="middle" font-size="9.5" fill="#8b95a3">+ 位置编码</text>
+
+      <rect x="260" y="38" width="150" height="78" rx="7" fill="#eaeffc" stroke="#c3d1f2"/>
+      <text x="335" y="60" text-anchor="middle" font-size="11.5" font-weight="700" fill="#2b54c4">③ 注意力堆叠</text>
+      <text x="335" y="78" text-anchor="middle" font-size="9.5" fill="#3d4a66">Q·K 打分 → 加权 V</text>
+      <text x="335" y="92" text-anchor="middle" font-size="9.5" fill="#3d4a66">因果掩码：只看左边</text>
+      <text x="335" y="106" text-anchor="middle" font-size="9.5" fill="#2b54c4">× N 层，语义逐层抽象</text>
+
+      <rect x="430" y="46" width="116" height="62" rx="7" fill="#ffffff" stroke="#d8dde5"/>
+      <text x="488" y="68" text-anchor="middle" font-size="11.5" font-weight="700" fill="#171a20">④ 输出投影</text>
+      <text x="488" y="86" text-anchor="middle" font-size="9.5" fill="#67707e">hidden → logits</text>
+      <text x="488" y="99" text-anchor="middle" font-size="9.5" fill="#8b95a3">词表上的一组分</text>
+
+      <rect x="566" y="46" width="106" height="62" rx="7" fill="#e6f4f1" stroke="#b6ddd6"/>
+      <text x="619" y="68" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0d7268">⑤ 采样</text>
+      <text x="619" y="86" text-anchor="middle" font-size="9.5" fill="#0d7268">softmax + 温度</text>
+      <text x="619" y="99" text-anchor="middle" font-size="9.5" fill="#0d7268">选出一个 token</text>
+
+      <line x1="114" y1="77" x2="128" y2="77" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#ar2)"/>
+      <line x1="240" y1="77" x2="254" y2="77" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#ar2)"/>
+      <line x1="410" y1="77" x2="424" y2="77" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#ar2)"/>
+      <line x1="546" y1="77" x2="560" y2="77" stroke="#9aa4b2" stroke-width="1.4" marker-end="url(#ar2)"/>
+      <!-- loop -->
+      <path d="M619,108 L619,138 L488,138 L488,112" fill="none" stroke="#c9d0da" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#ar2)"/>
+      <text x="554" y="156" text-anchor="middle" font-size="9.5" fill="#8b95a3">自回归：把新 token 接回序列，重复 ①–⑤</text>
+    </svg>
+    <figcaption>图 4　一次前向传播。整段提示词只被用来算下一次的概率分布；"理解"发生在③，而"输出"只是④⑤的一次采样。</figcaption>
+  </figure>
+
+  <p>逐段说明其中容易被忽略的三处：</p>
+
+  <p><strong>分词决定了模型"看得见什么粒度"。</strong>BPE 把文本切成子词单元，中文常是一字一 token 或两字一 token，数字和代码会被切得很碎。这解释了两件日常现象：为什么"写 800 字"经常不准（模型数的是 token 不是字，而中文字数与 token 数的换算比例并不固定），以及为什么罕见专有名词容易出错（低频词被切成碎片，模型难以形成稳定表示）。</p>
+
+  <p><strong>注意力是"软检索"，不是"硬查表"。</strong>每个位置的向量会被投影成 Query、Key、Value 三份；用当前 Query 与所有前序 Key 做点积得到相关性权重，再对 Value 加权求和。这意味着模型对提示词的每一处内容都只分配一个<em>权重</em>，而不是精确读取。所有 token 分享固定的注意力预算，一段内容占得多，别处就占得少——这就是"注意力稀释"的物理来源。</p>
+
+  <p><strong>层数带来抽象层级。</strong>浅层偏向词法与局部搭配，深层偏向语义角色与任务意图。所以同一句话在不同深度被"理解"成不同的东西，而提示词的作用是同时影响每一层。</p>
+
+  <h4 id="s4-2">4.2 核心视角：提示词是"条件"，不是"命令"</h4>
+
+  <div class="key">
+    <b>模型做的事情只有一件：</b>在给定前文 <code>x&lt;t</code> 的条件下，计算下一个 token 的概率分布 <code>p(x<sub>t</sub> | x&lt;t)</code>，采样一个，接回序列，重复。<br>
+    所以提示词的全部作用可以写成一句话：<b>把条件分布从"泛泛而谈"推向"你想要的区域"。</b>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 680 170" role="img" aria-label="条件分布被提示词塑形">
+      <!-- left distribution: flat -->
+      <text x="20" y="24" font-size="11.5" font-weight="700" fill="#545e6d">弱提示词：分布弥散</text>
+      <line x1="20" y1="120" x2="300" y2="120" stroke="#dfe4ea" stroke-width="1"/>
+      <g fill="#c9d2e0">
+        <rect x="30" y="88" width="20" height="32"/><rect x="56" y="76" width="20" height="44"/>
+        <rect x="82" y="92" width="20" height="28"/><rect x="108" y="70" width="20" height="50"/>
+        <rect x="134" y="86" width="20" height="34"/><rect x="160" y="80" width="20" height="40"/>
+        <rect x="186" y="90" width="20" height="30"/><rect x="212" y="74" width="20" height="46"/>
+        <rect x="238" y="86" width="20" height="34"/><rect x="264" y="94" width="20" height="26"/>
+      </g>
+      <text x="160" y="142" text-anchor="middle" font-size="10" fill="#8b95a3">词表上的候选 token</text>
+      <!-- arrow -->
+      <path d="M320,86 L368,86" stroke="#2b54c4" stroke-width="1.6" fill="none" marker-end="url(#ar2)"/>
+      <text x="344" y="76" text-anchor="middle" font-size="10" font-weight="700" fill="#2b54c4">加约束</text>
+      <!-- right: peaked -->
+      <text x="384" y="24" font-size="11.5" font-weight="700" fill="#0d7268">强提示词：分布尖锐</text>
+      <line x1="384" y1="120" x2="664" y2="120" stroke="#dfe4ea" stroke-width="1"/>
+      <g fill="#d5e8e3">
+        <rect x="394" y="112" width="20" height="8"/><rect x="420" y="110" width="20" height="10"/>
+        <rect x="446" y="108" width="20" height="12"/><rect x="472" y="104" width="20" height="16"/>
+        <rect x="498" y="98" width="20" height="22"/><rect x="524" y="46" width="20" height="74" fill="#0d7268"/>
+        <rect x="550" y="96" width="20" height="24"/><rect x="576" y="106" width="20" height="14"/>
+        <rect x="602" y="110" width="20" height="10"/><rect x="628" y="112" width="20" height="8"/>
+      </g>
+      <text x="534" y="40" text-anchor="middle" font-size="10" font-weight="700" fill="#0d7268">p ↑</text>
+      <text x="524" y="142" text-anchor="middle" font-size="10" fill="#8b95a3">目标 token 被推到高位</text>
+    </svg>
+    <figcaption>图 5　提示词不改变模型的能力集合，只改变分布的形状。所谓"提示词写得好"，就是让正确 token 的概率足够高，使采样几乎不会走偏。</figcaption>
+  </figure>
+
+  <p>这个视角能解释一件反直觉的事：为什么模型"知道答案却答不对"。知识存在于参数里（能力集合没变），但采样路径被前文的措辞、格式、语气引导到了别处（分布形状变了）。同一个问题换个问法就对，正是分布被重塑的证据。</p>
+
+  <h4 id="s4-3">4.3 把经验法则翻译成机制</h4>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:170px">常见写法</th><th>机制解释</th><th>什么时候会失效</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="hd">设定角色 / 人格</td>
+        <td>把分布移向该角色语料所在的"语域"（register）：用词、句式、关注点、默认假设一起偏移。它选择的是<em>风格与视角</em>，不是知识库。</td>
+        <td>角色与任务无关时纯属噪声；角色越具体，越容易挤占注意力而遮蔽任务本身。</td>
+      </tr>
+      <tr>
+        <td class="hd">给示例（few-shot）</td>
+        <td>上下文里形成的模式会被"归纳头"（induction heads）捕捉并复制：模型识别出"输入长这样→输出长那样"的结构，然后套用。示例同时隐式规定了输出长度、粒度与格式。</td>
+        <td>示例与真实输入分布不一致时，模型会忠实模仿错误的模式；示例太多会占满上下文。</td>
+      </tr>
+      <tr>
+        <td class="hd">要求分步思考</td>
+        <td>每生成一个 token 都要走一次完整前向，所以"写出中间步骤"等于<strong>把一次浅层预测拆成多次串行计算</strong>，有效增加了计算深度。</td>
+        <td>简单任务上属浪费；推理模型的思维链已内化，再要求外显反而干扰。</td>
+      </tr>
+      <tr>
+        <td class="hd">用分隔符 / 标签包住材料</td>
+        <td>给注意力提供清晰的边界锚点，让模型能区分"指令"与"数据"，减少两者混淆；同时也降低了材料里的文字被当成指令执行的风险。</td>
+        <td>分隔符本身没有语义，靠的是训练中形成的惯例；冷门符号效果不稳定。</td>
+      </tr>
+      <tr>
+        <td class="hd">指定输出格式</td>
+        <td>缩小搜索空间：格式约束排除掉大量候选序列，等效于提高目标序列的概率。JSON / 表格比自然语言段落更"尖"。</td>
+        <td>格式与模型习惯差异过大时（如要求罕见标记），模型可能牺牲内容去满足格式。</td>
+      </tr>
+      <tr>
+        <td class="hd">"不要做 X"</td>
+        <td>依赖指令微调训练出的否定理解能力。指令微调把"指令—服从"这一格式本身变成了强先验，所以格式化的祈使句有额外权重。</td>
+        <td>长上下文中否定约束衰减快；多个否定叠加时模型容易"只记住被禁止的词"。正向描述通常更稳。</td>
+      </tr>
+      <tr>
+        <td class="hd">关键指令重复一遍</td>
+        <td>对抗中间遗忘：位于长上下文中间的内容被利用率显著低于首尾。开头立规矩、结尾再重申，是低成本的补偿。</td>
+        <td>重复太多次会诱发"复读"倾向，也可能让模型把重复本身当成本任务。</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4 id="s4-4">4.4 结构性失效：不是"模型笨"，是架构使然</h4>
+
+  <ul>
+    <li><strong>首尾效应。</strong>序列开头与结尾的信息被利用率最高，中段最容易被"看过去"。这不是注意力不够，而是相对位置在训练分布中的统计结果。</li>
+    <li><strong>注意力预算稀释。</strong>上下文越长，每个 token 分到的份额越少。塞入大量无关材料，会实打实地降低关键指令的权重——"给得越多越好"是错的。</li>
+    <li><strong>补全而非检索。</strong>模型没有数据库查询机制，事实来自参数记忆与上下文，二者冲突时它会倾向于生成"最顺滑的续写"，而顺滑与真实并不总是同向。这就是幻觉的机械来源。</li>
+    <li><strong>指令层级不稳。</strong>系统层、开发者层、用户层、材料层的内容在模型眼里最终都只是 token 序列，优先级靠训练与位置维持，而非硬性隔离。任何把不可信内容混进指令区的做法都会削弱这层秩序。</li>
+    <li><strong>格式漂移。</strong>输出越长，早期建立的格式约束衰减越明显。长文档生成到后段忽然改格式，是采样逐步偏离的必然结果，不是"忘了"。</li>
+    <li><strong>硬预算。</strong>上下文窗口是物理上限，超出即截断。任何"把全部资料都塞进去"的策略最终都会撞上这堵墙。</li>
+  </ul>
+
+  <h4 id="s4-5">4.5 约束解码：把"请求"升级为"保证"</h4>
+
+  <p>第四部分的最后一块拼图，正好接上第二部分家族 C。前面说过提示词只能<em>影响</em>概率，但在工程里我们常常需要<em>保证</em>格式。这中间有三档强度，成本与确定性同步上升：</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:120px">层级</th><th>实现方式</th><th>确定性</th><th>典型代表</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="hd">软约束</td>
+        <td>在提示词里写清楚 schema，附示例，请求模型照做</td>
+        <td>高概率，偶尔破格</td>
+        <td>任意模型 + 模板</td>
+      </tr>
+      <tr>
+        <td class="hd">半硬约束</td>
+        <td>服务端提供的 JSON mode / function calling / 结构化输出参数</td>
+        <td>很高，仍可能语义错</td>
+        <td>各家 API 的结构化输出</td>
+      </tr>
+      <tr>
+        <td class="hd">硬约束</td>
+        <td>客户端把语法编译成状态机，逐步对 logits 掩码；或前缀强制</td>
+        <td>结构 100% 合法</td>
+        <td>guidance、outlines、llama.cpp 文法</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>硬约束的代价要说清楚：掩码会剥夺模型"本来想说的更好的表达"。当语法不允许某种自然措辞时，模型只能在狭小的合法集合里挑一个，可能挑出语法完美但语义空洞的结果。<strong>约束解决的是"能不能被程序解析"，不解决"内容对不对"。</strong>这也是为什么家族 C 必须与家族 B 配合使用——一个保证形状，一个保证质量。</p>
+
+  <div class="key">
+    <b>全篇收束成一句：</b>提示词生成器的一切技术，最终都落在两个杠杆上——<b>要么往条件里补信息</b>（模板、示例、上下文、检索），<b>要么往输出上收约束</b>（格式、schema、文法、类型）。前者提高"答对的概率"，后者降低"答错的空间"。所有开源方案与产品设计，都是这两个杠杆的不同配比。
+  </div>
+</section>
+
+<footer>
+  <div style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#a8b0bc;font-weight:700;margin-bottom:12px;">参考与延伸</div>
+  <ul class="refs">
+    <li>WorkBuddy 官方文档：<a href="https://www.workbuddy.cn/docs/workbuddy/Overview">简介</a> · <a href="https://www.workbuddy.cn/docs/workbuddy/Create-Task">创建任务</a>（提示词模板、工作模式、上下文补充的官方说明）</li>
+    <li><a href="https://github.com/langgptai/LangGPT">langgptai/LangGPT</a> ｜ 论文 arXiv:2402.16929《LangGPT: Rethinking Structured Reusable Prompt Design Framework for LLMs from the Programming Language》</li>
+    <li><a href="https://github.com/promptslab/Promptify">promptslab/Promptify</a>（v3 任务引擎、Pydantic 输出、内置评估）</li>
+    <li><a href="https://github.com/mshumer/gpt-prompt-engineer">mshumer/gpt-prompt-engineer</a>（生成—批跑—成对裁判—Elo 排名）</li>
+    <li><a href="https://github.com/linshenkx/prompt-optimizer">linshenkx/prompt-optimizer</a>（双模式优化、四档评估、MCP 服务）</li>
+    <li><a href="https://dspy.ai/learn/optimization/optimizers/">DSPy 优化器文档</a>（BootstrapFewShot / COPRO / MIPROv2 / GEPA 谱系）</li>
+    <li><a href="https://github.com/guidance-ai/guidance">guidance-ai/guidance</a>（约束生成、token fast-forwarding、token healing）</li>
+    <li><a href="https://docs.boundaryml.com/guide/introduction/what-is-baml">BoundaryML BAML 文档</a>（DSL、schema-aligned parsing、codegen）</li>
+    <li><a href="https://github.com/microsoft/LMOps/tree/main/promptist">microsoft/LMOps · Promptist</a>（NeurIPS 2023 Spotlight，PPO + CLIP 奖励的提示词改写器）</li>
+    <li>学术源头：AutoPrompt（梯度引导的离散提示词搜索）、PromptSource / OpenPrompt（模板库与提示学习框架）</li>
+  </ul>
+  <p style="margin-top:22px;font-size:12px;color:#a8b0bc;">本文基于公开文档与仓库内容整理，涉及产品行为的描述以官方文档为准；架构性归纳用于说明设计范式，不代表具体实现细节。</p>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

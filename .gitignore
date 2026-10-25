@@ -1,0 +1,72 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# ---- 虚拟环境（体积大，禁止入库）----
+.venv/
+venv/
+ENV/
+env/
+
+# ---- 测试 / 质量工具缓存 ----
+.pytest_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+
+# ---- 运行时数据与本地配置（含密钥风险）----
+prompt5/config.yaml
+prompt5/.env
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite
+*.sqlite3
+prompt5/data/blobs/*
+!prompt5/data/blobs/.gitkeep
+*.log
+
+# ---- 密钥与证书（绝不入库）----
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+*.ppk
+secrets.*
+credentials.*
+
+# ---- 本地工作记忆 / 个人数据（不上传）----
+.workbuddy/
+
+# ---- 编辑器 / 操作系统 ----
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 打包 / 临时产物 ----
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+.cache/
