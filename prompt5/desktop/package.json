@@ -1,0 +1,17 @@
+{
+  "name": "prompt5-desktop",
+  "productName": "Prompt5",
+  "version": "0.1.0",
+  "description": "Prompt5 桌面客户端（Windows）",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win nsis",
+    "dist:dir": "electron-builder --dir"
+  },
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.5"
+  }
+}

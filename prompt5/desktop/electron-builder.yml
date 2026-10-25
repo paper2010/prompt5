@@ -1,0 +1,28 @@
+appId: cn.paper2010.prompt5
+productName: Prompt5
+copyright: Copyright © 2026 paper2010
+directories:
+  output: release-windows
+files:
+  - main.js
+  - package.json
+extraResources:
+  - from: ../dist/prompt5-backend.exe
+    to: backend/prompt5-backend.exe
+    filter:
+      - "**/*"
+asar: true
+compression: maximum
+win:
+  target:
+    - nsis
+  artifactName: Prompt5-Setup-${version}.${ext}
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Prompt5
+  deleteAppDataOnUninstall: false

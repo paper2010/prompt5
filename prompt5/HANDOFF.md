@@ -162,3 +162,18 @@ npm run start                # 启动 python -m prompt5.ui --port 8765
 - 浏览器：六页加载、移动端 `scrollWidth=390`、无横向溢出、“创建 → 人工确认 → 结果”完整通过。
 - 生成结果当前仍使用 `MockLLM`，UI 会显示「Mock 生成 · 不代表目标模型真实输出」。
 - 本地 UI 是单用户边界；公开多用户部署前仍需网关层补真实用户体系和密钥注入。
+
+## 11. Windows 桌面端（v0.1）
+
+- 位置：`desktop/`
+- 架构：Electron 壳 + PyInstaller 单文件后端 + `web/dist`
+- 打包：`powershell -ExecutionPolicy Bypass -File .\desktop\scripts\build-windows.ps1`
+- 产物：`desktop/release-windows/Prompt5-Setup-0.1.0.exe`
+- 首次启动：配置与 SQLite 自动写入 `%APPDATA%\Prompt5\`，无需用户安装 Python/Node/数据库
+- 已验证：安装、启动、窗口加载、后端 `/healthz`、关闭窗口后子进程清理
+- 安装包 SHA-256：`71CA9BD1071E64E6383E48F62C125A76941E0B5F82B7293C386B7696039070FE`
+- 当前限制：
+  - 安装包未做代码签名，Windows SmartScreen 可能提示
+  - 使用 Electron 默认图标
+  - macOS 端本次未实现
+  - 演示模式离线可用；真实模型评测仍需在界面配置 API Key

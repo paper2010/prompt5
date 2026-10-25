@@ -5,6 +5,20 @@
 > **UI 交接版已完成**：React 19 + TypeScript + Vite 六页工作台、本地 UI 适配 API、契约测试与浏览器 smoke 已接入。
 > 项目总览与产出索引见仓库根目录 [`README.md`](../README.md)。
 
+## 项目公告
+
+### 2026-10-25 · Windows 桌面端 v0.1
+
+本次新增 Windows 本地桌面客户端：
+
+- Electron 桌面壳 + PyInstaller 单文件后端 + `web/dist`
+- 一键构建脚本：`desktop/scripts/build-windows.ps1`
+- NSIS 安装包：`desktop/release-windows/Prompt5-Setup-0.1.0.exe`
+- 首次启动自动创建 `%APPDATA%\Prompt5\config.yaml` 与 SQLite，无需安装 Python/Node
+- 已验证安装、启动、页面加载、后端健康检查与关闭后进程清理
+- 安装包 SHA-256：`71CA9BD1071E64E6383E48F62C125A76941E0B5F82B7293C386B7696039070FE`
+- 当前安装包未签名，SmartScreen 可能提示；macOS 端本次未实现
+
 ## 环境
 
 | 项 | 值 |
@@ -74,6 +88,28 @@ npm run test:browser
 
 UI 默认进入 **demo mode**，使用固定快照并全程标注“演示数据”；`VITE_API_MODE=remote` 才调用本地 FastAPI。演示结果不会冒充真实模型输出，scripted/live 与基线口径会随报告一起显示。
 
+## Windows 桌面端快速开始
+
+```powershell
+cd prompt5
+powershell -ExecutionPolicy Bypass -File .\desktop\scripts\build-windows.ps1
+```
+
+脚本会依次完成：
+
+1. 构建 `web/dist`
+2. 安装 PyInstaller
+3. 打包 FastAPI 后端为 `prompt5/dist/prompt5-backend.exe`
+4. 生成 NSIS 安装包到 `desktop/release/`
+
+产物：
+
+```text
+desktop/release-windows/Prompt5-Setup-0.1.0.exe
+```
+
+安装后无需配置 Python、Node 或数据库；首次运行会自动使用内置默认配置和 SQLite。演示模式完全离线可用。若需真实模型评测，请在界面中的“模型与端点配置”填写 API Key。
+
 ## 目录
 
 ```
@@ -109,7 +145,8 @@ src/prompt5/
 ├── engine/           flow_zero（A）+ pilot（M3）+ iterate（B）+ render_pipeline（Overlay）
 ├── store/            schema.sql（14 表）+ 迁移（PRAGMA user_version）
 ├── api/              --dry / --serve（FastAPI；缺失时 stdlib 兜底）
-└── web/              React 19 六页工作台 + 设计 token + UI 行为/浏览器测试
+├── web/              React 19 六页工作台 + 设计 token + UI 行为/浏览器测试
+└── desktop/          Electron + PyInstaller + electron-builder（Windows 桌面端）
 specs/                 JSON Schema 导出产物（M1）
 benchmarks/            金标任务与基线（M7）
 ```
