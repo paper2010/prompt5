@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from ...llm.client import LLMClient
 from .evalcase import EvalCase, EvalRow
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "judge_machine",
     "Executor",
     "ScriptedExecutor",
+    "OpenAICompatExecutor",
     "run_case",
 ]
 
@@ -105,3 +107,22 @@ def run_case(
         output=output,
         detail=verdict.detail,
     )
+
+
+class OpenAICompatExecutor:
+    """L3 真实执行器：把提示词发给目标模型，取其输出交机器判定。
+
+    端点/密钥来自配置（targets 段），temperature 固定 0 以保证可复现性优先。
+    """
+
+    def __init__(self, client: LLMClient, *, name: str | None = None) -> None:
+        self.client = client
+        self.name = name or f"live:{getattr(client, 'name', 'model')}"
+
+    def execute(self, prompt: str, task: dict[str, Any]) -> str:
+        budget = int((task.get("model_budget") or {}).get("max_tokens", 1024))
+        return self.client.chat(
+            [{"role": "user", "content": prompt}],
+            temperature=0.0,
+            max_tokens=budget,
+        )

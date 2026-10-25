@@ -1,54 +1,67 @@
-# prompt5 配置示例 —— 复制为 config.yaml 后按需填写
-# 接入任意「OpenAI 兼容」厂商：只需在 providers 里加一条，roles/targets 引用它即可。
-# 密钥三种写法（按推荐度排序）：
-#   1) api_key_env: "GLM_KEY"        → 从环境变量读取（推荐，不落盘）
-#   2) api_key: "${GLM_KEY}"         → 配置内占位，仍由环境变量注入
-#   3) api_key: "sk-..."             → 明文（config check 会告警，不建议提交仓库）
+# prompt5 配置 —— 复制为 config.yaml 后按需填写
+# 接入任意「OpenAI 兼容」厂商：在 providers 加一条，targets/judges 引用它即可。
+# 模型 ID 只是示例，请填你账号实际可用的 ID。
+# 密钥三种写法（按推荐度）：api_key_env > api_key: "${VAR}" > 明文（会被 config check 告警）
 
 server:
   host: "127.0.0.1"
   port: 8765
 
-# ── 供应商（端点地址、密钥、超时、额外请求头）─────────────────────────────
+# ── 供应商端点（全部走 OpenAI 兼容协议：/chat/completions）─────────────────
 providers:
-  glm:
-    display: "智谱 GLM（OpenAI 兼容）"
-    base_url: "${GLM_URL}"           # 例：https://open.bigmodel.cn/api/paas/v4
-    api_key_env: "GLM_KEY"
-    api_style: "openai"
-    timeout: 120
-    headers: {}
-  deepseek:
+  deepseek:                       # 主模型（默认 primary target）
     display: "DeepSeek"
-    base_url: "${DSK_URL}"           # 例：https://api.deepseek.com/v1
+    base_url: "${DSK_URL}"        # 例：https://api.deepseek.com/v1
     api_key_env: "DSK_KEY"
     api_style: "openai"
     timeout: 120
-  qwen:
-    display: "阿里云百炼 Qwen（OpenAI 兼容）"
-    base_url: "${QWEN_URL}"          # 例：https://dashscope.aliyuncs.com/compatible-mode/v1
-    api_key_env: "QWEN_KEY"
+  zhipu:                          # 智谱 GLM
+    display: "智谱 GLM"
+    base_url: "${ZHIPU_URL}"      # 例：https://open.bigmodel.cn/api/paas/v4
+    api_key_env: "ZHIPU_KEY"
     api_style: "openai"
-  local:
-    display: "自托管（vLLM / Ollama / LM Studio）"
-    base_url: "${LOCAL_LLM_URL}"     # 例：http://127.0.0.1:8000/v1
+  mimo:                           # 小米 MiMo
+    display: "小米 MiMo"
+    base_url: "${MIMO_URL}"
+    api_key_env: "MIMO_KEY"
+    api_style: "openai"
+  kimi:                           # Moonshot Kimi
+    display: "Moonshot Kimi"
+    base_url: "${KIMI_URL}"       # 例：https://api.moonshot.cn/v1
+    api_key_env: "KIMI_KEY"
+    api_style: "openai"
+  minimax:
+    display: "MiniMax"
+    base_url: "${MINIMAX_URL}"
+    api_key_env: "MINIMAX_KEY"
+    api_style: "openai"
+  local:                          # 自托管（vLLM / Ollama / LM Studio）
+    display: "自托管"
+    base_url: "${LOCAL_LLM_URL}"
     api_key_env: "LOCAL_LLM_KEY"
-    api_key_required: false          # 本地无鉴权时置 false
+    api_key_required: false
     timeout: 60
 
-# ── 四角色默认配置（执行方案 §8.2；回避规则由 CI 断言）──────────────────
+# ── 角色 ────────────────────────────────────────────────────────────────
 roles:
-  generator:  {provider: "glm",      model: "glm-5"}
-  judge_glm:  {provider: "deepseek", model: "deepseek-v"}
-  judge_dsk:  {provider: "qwen",     model: "qwen-max"}
-  judge_qwen: {provider: "deepseek", model: "deepseek-v"}
-  reflector:  {provider: "glm",      model: "glm-5"}
+  generator: {provider: "deepseek", model: "deepseek-chat"}   # 生成器用主模型
+  reflector: {provider: "deepseek", model: "deepseek-chat"}   # 离线反思器（低频）
+  # L2 裁判池：系统按「不同于被测族 且 不同于生成器族」自动挑选；
+  # 每项都是可自行填写的端点+模型，想换裁判直接改这里。
+  judges:
+    - {provider: "zhipu",   model: "glm-4.6"}
+    - {provider: "kimi",    model: "kimi-k2"}
+    - {provider: "minimax", model: "MiniMax-M2"}
+    - {provider: "mimo",    model: "mimo-7b-rl"}
 
-# ── 被测目标三模型（label 未经门禁不得改写）─────────────────────────────
+# ── 被测目标（L3 执行端点）：主模型 deepseek，其余按需启用 ────────────────
 targets:
-  glm5:     {provider: "glm",      model: "glm-5",        tier: "T2", label: "optimizing"}
-  deepseek: {provider: "deepseek", model: "deepseek-v",   tier: "T2", label: "optimizing"}
-  qwen_oss: {provider: "local",    model: "qwen-oss-14b", tier: "T1", label: "compatible"}
+  deepseek: {provider: "deepseek", model: "deepseek-chat", tier: "T2", label: "optimizing", primary: true}
+  zhipu:    {provider: "zhipu",    model: "glm-4.6",       tier: "T2", label: "compatible"}
+  kimi:     {provider: "kimi",     model: "kimi-k2",       tier: "T2", label: "compatible"}
+  minimax:  {provider: "minimax",  model: "MiniMax-M2",    tier: "T2", label: "compatible"}
+  mimo:     {provider: "mimo",     model: "mimo-7b-rl",    tier: "T2", label: "compatible"}
+  qwen_oss: {provider: "local",    model: "qwen-oss-14b",  tier: "T1", label: "compatible"}
 
 budgets:
   per_task_tokens: 250000
@@ -60,7 +73,8 @@ connectors:
   - id: "host-agent-alpha"
     tenant_id: "t-001"
     enabled: true
-    scopes: [discovery.v1, generate.v1, render.v1, score.v1]
+    scopes: [discovery.v1, generate.v1, render.v1, score.v1, iterate.v1,
+             events.v1, governance.read.v1, protection.request.v1, modelcard.request.v1]
     budget: {max_tasks_per_day: 200, l3_deep_eval: false}
     callbacks:
       enabled: false

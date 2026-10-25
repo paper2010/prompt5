@@ -1,7 +1,7 @@
 # prompt5 — 自适应提示词生成器
 
 > 唯一搭建依据：《提示词生成器系统-搭建执行方案.md》（见仓库根目录 [`docs/`](../docs/)）。
-> 本仓库当前进度：**M3 完成**（评测引擎：EvalCase + 交换双裁 + Wilcoxon/McNemar/TOST + 含 CI 报告 + blob 上传）。
+> 本仓库当前进度：**M7 骨架完成**（30 任务基准 + 隐藏集 + B1-OSS 基线 + 预注册 + 门禁判定）；确证运行需真实密钥。
 > 项目总览与产出索引见仓库根目录 [`README.md`](../README.md)。
 
 ## 环境
@@ -25,6 +25,15 @@ cd prompt5
 .venv/Scripts/python -m prompt5.export_schema                    # M1 DoD：导出 4 份 Schema 并校验
 .venv/Scripts/python -m prompt5.cli demo-zero --task "把这份 CSV 做成分析报告"   # M2 DoD：端到端
 .venv/Scripts/python -m prompt5.cli pilot --quiet                                # M3 DoD：pilot 报告（离线模拟）
+.venv/Scripts/python -m prompt5.cli config check                                 # 校验端点/密钥/角色/裁判池/目标
+.venv/Scripts/python -m prompt5.cli probe --target deepseek                     # 端点探活（真实最小请求）
+.venv/Scripts/python -m prompt5.tck                                             # M6 DoD：契约测试套件（12 项）
+.venv/Scripts/python -m prompt5.cli m7 init                                     # 生成并冻结预注册
+.venv/Scripts/python -m prompt5.cli m7 run --executor live --target deepseek     # 确证集门禁（需密钥）
+.venv/Scripts/python -m prompt5.cli pilot --executor live --target deepseek     # 真实 L3 评测（需密钥）
+.venv/Scripts/python -m prompt5.cli pilot --judge l2                            # 启用 L2 交换双裁（自动选异族裁判）
+.venv/Scripts/python -m prompt5.cli iterate --seed-file examples/seed_report.md \
+    --task "请用表格输出，必须给出数据来源" --db :memory:                        # M4 DoD：种子迭代
 .venv/Scripts/python -m prompt5.cli demo-zero --task "..." --json              # 输出完整 IR
 .venv/Scripts/python -m prompt5.api --dry                        # 打印 capabilities
 .venv/Scripts/python -m prompt5.api --serve --port 8765          # FastAPI 服务
@@ -48,11 +57,18 @@ src/prompt5/
 ├── cli.py            demo-zero / extract 子命令
 ├── llm/              LLMClient 协议 + MockLLM + OpenAI 兼容客户端
 ├── modules/          m1_extractor（意图）/ m3_cards（模型卡+渲染）/ m4_generator（骨架策略）
-│   └── m5_eval/      l1_rules / l2_judge（交换双裁）/ l3_exec（执行+机器判定）
+│   ├── m1_seed.py    种子反解（渲染文本 → IR，承诺往返）
+│   ├── m6_sessions.py 在线会话：语义门控 + 建议四元组 + epoch CAS
+│   ├── m6_events.py   事件 outbox：持久化 / 重试 / DLQ / 游标拉取
+│   └── m5_eval/      l1_rules / l2_judge / l3_exec（scripted+live）/ regression
 │                     evalcase（单元与聚合）/ stats（Wilcoxon/McNemar/bootstrap/TOST）
 │                     cache（键隔离）/ runner（流程+报告）
 ├── blobs.py          材料上传（服务端算哈希/白名单/配额/TTL/租户隔离）
-├── engine/           flow_zero（流程 A 编排）+ pilot（M3 评测编排）
+├── connector/        api.py（服务层+HTTP 20 资源）/ mcp_adapter.py（18 工具）
+├── modules/m7_bench.py 30 任务基准 / B1-OSS 基线 / 预注册 / 门禁判定
+├── security/         ssrf.py（回调地址守卫）/ signing.py（HMAC 签名）
+├── tck/              suite.py + __main__.py（契约测试套件）
+├── engine/           flow_zero（A）+ pilot（M3）+ iterate（B）+ render_pipeline（Overlay）
 ├── store/            schema.sql（14 表）+ 迁移（PRAGMA user_version）
 └── api/              --dry / --serve（FastAPI；缺失时 stdlib 兜底）
 specs/                 JSON Schema 导出产物（M1）
@@ -61,4 +77,4 @@ benchmarks/            金标任务与基线（M7）
 
 ## 里程碑状态
 
-M0 ✅ → M1 ✅ → M2 ✅ → M3 ✅ → M4（迭代：种子反解 + 补丁链 + 回归保护 + 意图门禁）待开工。
+M0 ✅ → M1 ✅ → M2 ✅ → M3 ✅ → M4 ✅ → M5 ✅ → M6 ✅ → M7 骨架 ✅（确证运行待真实密钥）。

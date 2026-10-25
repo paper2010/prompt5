@@ -469,6 +469,8 @@ def validate_config(data: dict) -> list[Issue]:
         issues.append(Issue("error", "CFG_NO_ROLES", "roles", "未定义任何角色"))
 
     for role, raw in roles.items():
+        if role == "judges":
+            continue
         raw = raw or {}
         if not str(raw.get("model", "")).strip():
             issues.append(Issue("error", "CFG_ROLE_NO_MODEL", f"roles.{role}.model", "缺少模型名"))
@@ -482,6 +484,36 @@ def validate_config(data: dict) -> list[Issue]:
             issues.append(
                 Issue("error", "CFG_ROLE_NO_TARGET", f"roles.{role}",
                       "需提供 provider，或旧写法的 base_url + api_key_env")
+            )
+
+    judges = roles.get("judges")
+    if not isinstance(judges, list) or not judges:
+        issues.append(
+            Issue("error", "CFG_NO_JUDGES", "roles.judges",
+                  "未定义 L2 裁判池（judges 必须为非空列表）")
+        )
+    else:
+        judge_families: set[str] = set()
+        for index, entry in enumerate(judges):
+            if not isinstance(entry, dict):
+                issues.append(Issue("error", "CFG_JUDGE_SHAPE", f"roles.judges[{index}]", "必须为映射"))
+                continue
+            provider = entry.get("provider")
+            if provider not in providers:
+                issues.append(
+                    Issue("error", "CFG_JUDGE_UNKNOWN_PROVIDER", f"roles.judges[{index}].provider",
+                          f"未定义的供应商 {provider!r}")
+                )
+            else:
+                judge_families.add(str(provider))
+            if not str(entry.get("model", "")).strip():
+                issues.append(
+                    Issue("error", "CFG_JUDGE_NO_MODEL", f"roles.judges[{index}].model", "缺少模型名")
+                )
+        if len(judge_families) < 2:
+            issues.append(
+                Issue("warn", "CFG_JUDGE_POOL_THIN", "roles.judges",
+                      "裁判池只有 1 个族，部分被测目标将无法满足回避规则（裁判≠被测族 且 ≠生成器族）")
             )
 
     for name, raw in targets.items():
@@ -499,8 +531,88 @@ def validate_config(data: dict) -> list[Issue]:
                       f"未知标签 {raw.get('label')!r}，仅允许 optimizing/compatible/rejected")
             )
 
+    primaries = [name for name, raw in targets.items() if (raw or {}).get("primary")]
+    if len(primaries) > 1:
+        issues.append(
+            Issue("error", "CFG_MULTI_PRIMARY", "targets",
+                  f"只能有一个 primary 目标，当前为 {primaries}")
+        )
+    elif targets and not primaries:
+        issues.append(
+            Issue("warn", "CFG_NO_PRIMARY", "targets", "未标记 primary 目标（建议显式指定主模型）")
+        )
+
+
     budgets = data.get("budgets") or {}
     for key in ("per_task_tokens", "tenant_daily_tokens", "global_concurrent_tasks"):
         if key in budgets and not isinstance(budgets[key], int):
             issues.append(Issue("error", "CFG_BUDGET_TYPE", f"budgets.{key}", "必须为整数"))
     return issues
+
+
+# ---------------------------------------------------------------- judge pool / targets
+@dataclass
+class JudgeBinding:
+    role: str
+    provider: ProviderConfig
+    model: str
+    family: str
+
+
+def judge_pool(data: dict) -> list[dict]:
+    pool = (data.get("roles") or {}).get("judges")
+    if not isinstance(pool, list):
+        raise ConfigError("roles.judges 必须是非空列表")
+    return [entry for entry in pool if isinstance(entry, dict)]
+
+
+def generator_family(data: dict) -> str:
+    raw = (data.get("roles") or {}).get("generator") or {}
+    return str(raw.get("provider") or "inline:generator")
+
+
+def resolve_judge(data: dict, target_provider: str) -> JudgeBinding:
+    """按回避规则挑裁判：裁判族 ≠ 被测族，且 ≠ 生成器族。
+
+    池均不满足时显式报错（不静默降级到同族裁判）。
+    """
+    gen_family = generator_family(data)
+    for entry in judge_pool(data):
+        family = str(entry.get("provider", ""))
+        if not family or family in {target_provider, gen_family}:
+            continue
+        provider = resolve_provider(data, family)
+        model = str(entry.get("model", "")).strip()
+        if not model:
+            continue
+        return JudgeBinding(role=f"judge:{family}", provider=provider, model=model, family=family)
+    raise ConfigError(
+        f"无可用裁判：裁判池中没有与 target({target_provider!r}) 和 generator({gen_family!r}) 都不同族的条目"
+    )
+
+
+def resolve_target(data: dict, name: str) -> tuple[ProviderConfig, str, dict]:
+    """解析被测目标 → (供应商, 模型, 原始配置)。"""
+    targets = data.get("targets") or {}
+    if name not in targets:
+        raise ConfigError(f"unknown target {name!r}（targets 中未定义）")
+    raw = targets[name] or {}
+    provider_name = str(raw.get("provider", "")).strip()
+    if not provider_name:
+        raise ConfigError(f"target {name!r} 缺少 provider")
+    model = str(raw.get("model", "")).strip()
+    if not model or "${" in model:
+        raise ConfigError(f"target {name!r} 缺少可用 model")
+    return resolve_provider(data, provider_name), model, raw
+
+
+def primary_target(data: dict) -> str:
+    primaries = [name for name, raw in (data.get("targets") or {}).items() if (raw or {}).get("primary")]
+    if len(primaries) > 1:
+        raise ConfigError(f"只能有一个 primary 目标：{primaries}")
+    if primaries:
+        return primaries[0]
+    targets = list((data.get("targets") or {}).keys())
+    if not targets:
+        raise ConfigError("targets 为空")
+    return targets[0]

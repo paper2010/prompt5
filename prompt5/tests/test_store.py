@@ -35,7 +35,7 @@ class MigrationTest(unittest.TestCase):
         finally:
             conn.close()
         self.assertEqual(tables, EXPECTED_TABLES)
-        self.assertEqual(len(tables), 14)
+        self.assertEqual(len(tables), 16)
 
     def test_user_version_stamped(self) -> None:
         conn = init_db(self.db_path)
@@ -48,8 +48,8 @@ class MigrationTest(unittest.TestCase):
     def test_migrate_is_idempotent(self) -> None:
         conn = connect(self.db_path)
         try:
-            self.assertEqual(migrate(conn), 1)
-            self.assertEqual(migrate(conn), 1)  # 二次调用不重建、不报错
+            self.assertEqual(migrate(conn), 2)
+            self.assertEqual(migrate(conn), 2)  # 二次调用不重建、不报错
         finally:
             conn.close()
 

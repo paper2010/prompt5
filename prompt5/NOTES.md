@@ -41,3 +41,41 @@
 - **场景**：FastAPI/TestClient 在工作线程执行路由，而 SQLite 连接默认 `check_same_thread=True` → `ProgrammingError`。
 - **采取**：`store.connect(...)` 增加 `check_same_thread` 参数（默认 True 保持安全），仅 API 构建路径传 False 复用单连接。
 - **已知边界**：该方案只适用于单进程（TestClient / uvicorn 单 worker）。**多 worker 前必须切 PostgreSQL**（M6 连接器阶段一并处理），不允许用「多进程 + SQLite」硬撑。
+
+## #6 种子反解的保证边界（M4，2026-10-25）
+
+- **场景**：计划要求「种子反解」（既有提示词 → IR），但外部提示词格式无穷。
+- **采取**：只承诺对本项目渲染器（`m3_cards`，template `tpl1`）的输出可**往返**（测试锁定 roundtrip）；对无结构文本退化为「整段作为 goal.outcome」并写入 `created.assumptions`；不猜测未出现的槽位、不臆造约束。
+- **未覆盖**：任意第三方提示词模板的结构识别属后续能力，需先补模板库再扩展，不在当前承诺范围。
+
+## #7 schema v2：在线会话新增 turns / suggestions（M5，2026-10-25）
+
+- **场景**：M0 的 DDL 来自方案 §5（14 表），在线模式需要「轮次记录」与「不可变建议（四元组）」两类数据，原表无法承载。
+- **采取**：新增迁移 `schema_v2.sql`（`turns`、`suggestions`），`PRAGMA user_version` 1→2，迁移幂等；`migrate()` 支持链式升级。未改动 v1 任何表结构（向后兼容）。
+- **口径补充**：`context_hash` 只由「语义类轮」（invalidates=1）参与，寒暄/进展不计入——避免每条寒暄都让在途建议失效（补丁饥饿）。
+- **边界**：`turns` 目前存明文对话（仅本地/测试库）；生产启用前必须接入方案 §5.3 的数据最小化（默认只存哈希/引用 + opt-in 全文）。
+
+## #8 L2/L3 端点开放与裁判池回避规则（2026-10-25）
+
+- **场景**：L2 裁判与 L3 执行端点原为固定角色名（judge_glm 等），无法适配用户自选厂商。
+- **采取**：`roles.judges` 改为可填列表（provider+model），运行时按「裁判族 ≠ 被测族 且 ≠ 生成器族」自动挑选；池内无可用项时**显式报错**，不降级到同族裁判。`targets.*` 增加 `primary` 标记（唯一），L3 执行器 `OpenAICompatExecutor` 从 targets 读取端点/密钥。
+- **验证入口**：`prompt5.cli config check`（端点/密钥/角色/裁判池/目标全量状态）+ `prompt5.cli probe [--target]`（真实最小请求探活，失败退出 1）。
+
+## #9 M6 范围与契约偏差（2026-10-25）
+
+- **任务执行时序**：`POST /v1/tasks` 返回 202 并置 `rubric_pending`；`rubric:confirm` 内**同步**完成生成。状态机保留异步语义（queued→rubric_pending→succeeded），但执行未真正后台化——P1 接入 worker 后替换，不改变对外状态机。
+- **iterate 同步**：`pg_iterate` 同步返回最终 IR（无任务状态机）。属于 P0 简化，接口字段已预留 `state/ir_version`。
+- **回调投递未启用**：签名（HMAC + 时间戳容差）与 SSRF 守卫已实现并纳入 TCK，但因无外部端点，`deliver_pending` 未接 HTTP 投递；推拉双通道中的「拉」已可用（`GET /sessions/{id}/events?after_event_seq=`）。
+- **MCP 适配器**：当前是「18 工具注册表 + 调度器」（`list_tools` / `call_tool`），传输层（stdio/SSE）待 M6 之后接入；等价性由「HTTP 与 MCP 共用同一 ConnectorService」构造保证，TCK 另断言读接口输出完全相等。
+- **判定**：以上均为显式边界，不是静默降级；TCK 对任一偏离都会失败。
+
+## #10 人工预算替代：B1-OSS 开源专家模板基线（M7，2026-10-25）
+
+- **场景**：M7 原计划需要 B1 人工盲写基线 + 3 人产出盲评（估 25–45 人时），实际无人力预算。
+- **采取**：
+  1. **主端点不变**：仍为「机器可判定任务成功率」，30 条基准全部机器判定（≥24 的硬要求已满足），因此**不需要人工盲评**；
+  2. **B1 降级为 B1-OSS**：由开源专家提示词模板 + 任务 brief 填充构成，`human_blind_eval=false` 写入预注册；
+     来源与许可：`f/prompts.chat`（提示词 CC0-1.0，act-as 范式）、`bigscience-workshop/promptsource`（Apache-2.0，input/target 分离思路）；
+  3. **口径收窄**：结论只能表述为「相对开源专家模板基线的机器可判定任务成功率」，禁止表述为「超过人工专家」或「全面最佳」。
+- **何时可恢复人工基线**：一旦有预算，按 `prereg` 的 `baseline` 段把 `human_blind_eval` 置 true、补 B1 盲写与评审池即可；门禁代码无需改动（只读预注册阈值）。
+- **残余偏差**：B1-OSS 的模板较通用、可能弱于真人专家，因此「optimizing」标签的强度低于人工基线版本；这是显式接受的偏差，写进预注册而不是隐藏。

@@ -70,3 +70,6 @@ desktop.ini
 *.orig
 *.rej
 .cache/
+
+# ---- 本地快照包（不入库）----
+prompt5-snapshot-*.zip

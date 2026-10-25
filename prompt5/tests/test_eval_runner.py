@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from prompt5.engine.pilot import b2_builder, champion_builder, run_pilot
+from prompt5.engine.pilot import build_candidates, run_pilot
 from prompt5.modules.m5_eval.cache import EvalCache
 from prompt5.modules.m5_eval.evalcase import EvalCase, aggregate_to_tasks
 from prompt5.modules.m5_eval.l3_exec import Executor, ScriptedExecutor, judge_machine, run_case
@@ -107,7 +107,7 @@ class TestCacheIsolation:
     def test_same_inputs_hit_cache(self) -> None:
         tasks = load_tasks(TASKS)
         cache = EvalCache()
-        candidates = [Candidate("c", champion_builder)]
+        candidates = [build_candidates("deepseek")[0]]
         first = evaluate(candidates, tasks, ScriptedExecutor(), model_snapshot="m", repeats=3, cache=cache)
         assert (first.cache_stats["hits"], first.cache_stats["misses"]) == (0, 15)
         before = cache.stats()
@@ -119,7 +119,7 @@ class TestCacheIsolation:
     def test_model_change_misses(self) -> None:
         tasks = load_tasks(TASKS)
         cache = EvalCache()
-        candidates = [Candidate("c", champion_builder)]
+        candidates = [build_candidates("deepseek")[0]]
         first = evaluate(candidates, tasks, ScriptedExecutor(), model_snapshot="m1", repeats=3, cache=cache)
         before = cache.stats()
         report = evaluate(candidates, tasks, ScriptedExecutor(), model_snapshot="m2", repeats=3, cache=cache)
@@ -129,7 +129,7 @@ class TestCacheIsolation:
     def test_judge_change_misses(self) -> None:
         tasks = load_tasks(TASKS)
         cache = EvalCache()
-        candidates = [Candidate("c", b2_builder)]
+        candidates = [build_candidates("deepseek")[1]]
         evaluate(candidates, tasks, ScriptedExecutor(), model_snapshot="m", repeats=3, judge_id="judge-a", cache=cache)
         before = cache.stats()
         report = evaluate(candidates, tasks, ScriptedExecutor(), model_snapshot="m", repeats=3, judge_id="judge-b", cache=cache)
@@ -138,7 +138,7 @@ class TestCacheIsolation:
     def test_bench_change_misses(self) -> None:
         tasks = load_tasks(TASKS)
         cache = EvalCache()
-        candidates = [Candidate("c", b2_builder)]
+        candidates = [build_candidates("deepseek")[1]]
         evaluate(candidates, tasks, ScriptedExecutor(), model_snapshot="m", repeats=3, bench_version="v1", cache=cache)
         before = cache.stats()
         report = evaluate(candidates, tasks, ScriptedExecutor(), model_snapshot="m", repeats=3, bench_version="v2", cache=cache)
@@ -168,4 +168,4 @@ class TestDegenerate:
     def test_repeats_must_match_seeds(self) -> None:
         tasks = load_tasks(TASKS)[:1]
         with pytest.raises(ValueError):
-            evaluate([Candidate("c", b2_builder)], tasks, ScriptedExecutor(), model_snapshot="m", repeats=2, seeds=(1,))
+            evaluate([build_candidates("deepseek")[1]], tasks, ScriptedExecutor(), model_snapshot="m", repeats=2, seeds=(1,))

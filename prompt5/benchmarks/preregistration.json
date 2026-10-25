@@ -1,0 +1,54 @@
+{
+  "version": "1",
+  "frozen_at": "2026-10-25T03:23:01+00:00",
+  "bench_version": "m7-v1",
+  "bench_path": "benchmarks/tasks_m7.jsonl",
+  "hidden_path": "benchmarks/hidden/tasks_hidden.jsonl",
+  "split": {
+    "total": 30,
+    "calibration": 10,
+    "confirmatory": 20,
+    "machine_judgeable": 30,
+    "critical": 3
+  },
+  "primary_endpoint": {
+    "metric": "machine_judgeable_task_success_rate",
+    "test": "mcnemar_exact",
+    "alpha": 0.05,
+    "note": "只统计机器可判定任务；人工盲评未启用（无人工预算）"
+  },
+  "thresholds": {
+    "delta_imp": 0.1,
+    "eps_ni": 0.05,
+    "mde": 0.2
+  },
+  "baseline": {
+    "id": "b1-oss",
+    "tier": "oss-expert-template",
+    "human_blind_eval": false,
+    "sources": [
+      {
+        "id": "f/prompts.chat",
+        "url": "https://github.com/f/prompts.chat",
+        "license": "CC0-1.0",
+        "usage": "act-as 角色模板范式参考，改写为中文任务模板"
+      },
+      {
+        "id": "bigscience-workshop/promptsource",
+        "url": "https://github.com/bigscience-workshop/promptsource",
+        "license": "Apache-2.0",
+        "usage": "input/target 分离与模板化思路参考"
+      }
+    ],
+    "caveat": "开源专家模板基线，不等价于本研究盲写的人工基线；结论仅限机器可判定子集"
+  },
+  "models": [
+    "deepseek"
+  ],
+  "no_human_budget_mode": true,
+  "labels": {
+    "optimizing": "相对 B1-OSS 显著改善且达 delta_imp，并通过关键任务闸门",
+    "compatible": "仅非劣（mean_diff ≥ -eps_ni），不得宣称更优",
+    "rejected": "劣于 eps_ni 或关键任务失败"
+  }
+}

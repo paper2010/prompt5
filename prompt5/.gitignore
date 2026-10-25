@@ -1,0 +1,29 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+.pytest_cache/
+.hypothesis/
+.coverage
+
+# ---- 运行产物（不入库）----
+*.db
+*.db-wal
+*.db-shm
+data/
+prompt5.db*
+
+# ---- 环境与密钥 ----
+.env
+config.yaml
+*.pem
+*.key
+
+# ---- 编辑器/系统 ----
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

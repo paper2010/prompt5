@@ -10,7 +10,7 @@ from pathlib import Path
 
 __all__ = ["connect", "migrate", "init_db", "SCHEMA_VERSION", "EXPECTED_TABLES"]
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 EXPECTED_TABLES = {
     "irs",
@@ -27,9 +27,12 @@ EXPECTED_TABLES = {
     "model_cards",
     "protect",
     "authorizations",
+    "turns",
+    "suggestions",
 }
 
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
+_SCHEMA_V2_PATH = Path(__file__).with_name("schema_v2.sql")
 
 
 def connect(db_path: str | Path, *, check_same_thread: bool = True) -> sqlite3.Connection:
@@ -54,6 +57,11 @@ def migrate(conn: sqlite3.Connection) -> int:
         conn.execute("PRAGMA user_version = 1")
         conn.commit()
         current = 1
+    if current < 2:
+        conn.executescript(_SCHEMA_V2_PATH.read_text(encoding="utf-8"))
+        conn.execute("PRAGMA user_version = 2")
+        conn.commit()
+        current = 2
     return current
 
 

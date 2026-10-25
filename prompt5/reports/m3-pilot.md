@@ -1,7 +1,7 @@
 # M3 Pilot 评测报告
 
 - 证据标签：⚠️ 模拟执行器（scripted）：仅验证评测链路，**不构成效果证据**
-- 基准版本：`pilot-v1`　模型快照：`glm5@mock`　重复：3
+- 基准版本：`pilot-v1`　模型快照：`deepseek@scripted`　重复：3
 - 样本单位：任务（n=5）；repeats 已在任务内聚合
 - 缓存：{'hits': 0, 'misses': 30, 'size': 30}
 
